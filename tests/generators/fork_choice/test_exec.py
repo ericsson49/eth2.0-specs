@@ -74,17 +74,24 @@ def do_step(store_holder, step, msg_buffer, fixSignatures=False):
     elif key == "checks":
         store = store_copy(store_holder[0])
         checks = step[key]
-        for check, value in checks.items():
+        for check, data in checks.items():
+            value = data['value']
+            optional = data['optional']
             if check == 'block_in_store':
-                assert decode(value, Bytes32) in store.blocks, check + ' failed'
+                decode(value, Bytes32) in store.blocks
             elif check == 'block_not_in_store':
-                assert decode(value, Bytes32) not in store.blocks, check + ' failed'
+                res = decode(value, Bytes32) not in store.blocks
             elif check == 'head':
-                assert decode(value, Bytes32) == spec.get_head(store), check + ' failed'
+                res = decode(value, Bytes32) == spec.get_head(store)
             elif check == 'justified_checkpoint_epoch':
-                assert decode(value, uint64) == store.justified_checkpoint.epoch, check + ' failed'
+                res = decode(value, uint64) == store.justified_checkpoint.epoch
             else:
-                print('unknown check:', check)
+                raise Exception('unknown check:', check)
+            if optional:
+                if not res:
+                    print(check + " failed, but it's optional")
+            else:
+                assert res, check + ' failed'
     else:
         print('unknown step kind:', key)
 
