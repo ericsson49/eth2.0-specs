@@ -246,9 +246,9 @@ def convert_test_event(e):
     if isinstance(e, SlotEvent):
         d = ('slot', e.slot)
     elif isinstance(e, BlockEvent):
-        d = ('block', encode(e.block))
+        d = ('block', e.block)
     elif isinstance(e, AttestationEvent):
-        d = ('attestation', encode(e.attestation))
+        d = ('attestation', e.attestation)
     elif isinstance(e, CheckEvent):
         d = ('checks', e.checks)
     else:
@@ -267,7 +267,7 @@ def convert_test_case(bls, genesis, steps, path):
         data.append({kind: v})
     return {
         'meta': {'bls_setting': bls},
-        'genesis': cache_object(cache_path, "state", encode(genesis)).name,
+        'genesis': cache_object(cache_path, "state", genesis).name,
         'steps': data
     }
 
@@ -298,17 +298,22 @@ def get_cache(path):
         res = {}
         for p in path.glob('*.yaml'):
             kind = p.name.split('_')[0]
-            o = load_obj(p)
-            res[str(o)] = p.relative_to(path)
+            if kind == 'state':
+                o = decode(load_obj(p), spec.BeaconState)
+            elif kind == 'block':
+                o = decode(load_obj(p), spec.SignedBeaconBlock)
+            elif kind == 'attestation':
+                o = decode(load_obj(p), spec.Attestation)
+            res[spec.hash_tree_root(o)] = p.relative_to(path)
         caches[path] = res
     return caches[path]
 
 def cache_object(path, prefix, o):
     cache = get_cache(path)
-    root = str(o)
+    root = spec.hash_tree_root(o)
     if root not in cache:
         cnt = len(list(path.glob(prefix + "_*.yaml")))
         p = path.joinpath(prefix + "_" + str(cnt) + ".yaml")
-        yaml.dump(o, p)
+        yaml.dump(encode(o), p)
         cache[root] = p.relative_to(path)
     return cache[root]
