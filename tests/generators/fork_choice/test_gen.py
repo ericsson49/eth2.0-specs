@@ -94,14 +94,14 @@ class State(object):
         #else:
         #    bls.bls_active = False
 
-    def _add_check(self, kind, param):
+    def _add_check(self, kind, param, optional=False):
         if len(self.events) == 0 or not isinstance(self.events[-1], CheckEvent):
             self.events.append(CheckEvent({}))
         checks = self.events[-1].checks
         if kind in checks:
             raise Exception()
         else:
-            checks[kind] = param
+            checks[kind] = {'value': param, 'optional': optional}
     
     def head_check(self):
         self._add_check('head', encode(self.get_head()))
