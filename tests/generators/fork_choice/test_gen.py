@@ -13,6 +13,7 @@ from eth2spec.test.helpers.keys import pubkey_to_privkey
 
 from eth2spec.utils import bls
 
+from itertools import groupby
 from collections import OrderedDict
 
 
@@ -169,6 +170,37 @@ class State(object):
             elif isinstance(msg, spec.Attestation):
                 self.send_attestation(msg, redo=True)
 
+def bitlist_to_indices(bl):
+    return set(i for i, e in enumerate(bl) if e)
+
+def merge_agg_bits(bls):
+    acc = set()
+    for bl in bls:
+        acc = acc.union(bitlist_to_indices(bl))
+    return acc
+
+def group_atts_by_data(atts):
+    return dict((g, merge_agg_bits([pa.aggregation_bits for pa in pas])) for g, pas in groupby(atts, lambda a: a.data))
+
+def find_new_atts(prev_atts, atts):
+    grouping = group_atts_by_data(prev_atts)
+    new_atts = []
+    for a in atts:
+        indices = bitlist_to_indices(a.aggregation_bits)
+        if len(indices) != 1:
+            raise Exception('only single attester attestations are supproted')
+        if a.data not in grouping or list(indices)[0] not in grouping[a.data]:
+            new_atts.append(a)
+    res = []
+    for data, _ats in groupby(new_atts, lambda a: a.data):
+        ats = list(_ats)
+        bl = spec.Bitlist[spec.MAX_VALIDATORS_PER_COMMITTEE]([False] * (ats[0].aggregation_bits.length()))
+        for idx in merge_agg_bits([a.aggregation_bits for a in ats]):
+            bl[idx] = True
+        agg_sig = spec.get_aggregate_signature(ats)
+        res.append(spec.Attestation(aggregation_bits = bl, data = data, signature = agg_sig))
+    return res
+
 def mk_block(st, slot, parent_ref, atts=[], graffiti=0,bad_parent=False, bad_state=False, bad_signature=False):
     if isinstance(parent_ref, spec.SignedBeaconBlock):
         parent_root = block_root(parent_ref)
@@ -182,9 +214,10 @@ def mk_block(st, slot, parent_ref, atts=[], graffiti=0,bad_parent=False, bad_sta
     SK = pubkey_to_privkey[state.validators[proposer].pubkey]
     randao_reveal = spec.get_epoch_signature(state, spec.BeaconBlock(slot=slot), SK)
     eth1vote = spec.get_eth1_vote(state, [])
+    new_atts = find_new_atts(list(state.previous_epoch_attestations) + list(state.current_epoch_attestations), atts)
     block = spec.BeaconBlock(slot=slot, proposer_index=proposer, parent_root=parent_root,
         body=spec.BeaconBlockBody(
-            randao_reveal=randao_reveal,attestations=atts,eth1_data=eth1vote,graffiti=graffiti.to_bytes(32,spec.ENDIANNESS)))
+            randao_reveal=randao_reveal,attestations=new_atts,eth1_data=eth1vote,graffiti=graffiti.to_bytes(32,spec.ENDIANNESS)))
     if bad_state:
         block.state_root = spec.Root()
     else:
