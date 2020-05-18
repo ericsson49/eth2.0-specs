@@ -169,7 +169,13 @@ class State(object):
             elif isinstance(msg, spec.Attestation):
                 self.send_attestation(msg, redo=True)
 
-def mk_block(st, slot, parent_root, atts=[], graffiti=0,bad_parent=False, bad_state=False, bad_signature=False):
+def mk_block(st, slot, parent_ref, atts=[], graffiti=0,bad_parent=False, bad_state=False, bad_signature=False):
+    if isinstance(parent_ref, spec.SignedBeaconBlock):
+        parent_root = block_root(parent_ref)
+    elif isinstance(parent_ref, spec.Bytes32):
+        parent_root = parent_ref
+    else:
+        raise Exception("parent_root should be either a block or a root")
     store = st.store
     state = advance_state(store.block_states[parent_root], slot)
     proposer = spec.get_beacon_proposer_index(state)
