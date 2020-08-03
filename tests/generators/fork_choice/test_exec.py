@@ -31,8 +31,20 @@ part_cache = {}
 def load_cached_part(part_id):
     global part_cache
     if part_id not in part_cache:
-        part_cache[part_id] = yaml.load(Path(test_dir, 'cache', part_id))
+        if part_id.endswith('.yaml'):
+            part_cache[part_id] = yaml.load(Path(test_dir, 'cache', part_id))
+        elif part_id.endswith('.ssz'):
+            with open(Path(test_dir, 'cache', part_id), 'rb') as f:
+                part_cache[part_id] = f.read()
+        else:
+            raise Exception('unrecognized path ' + str(part_id))
     return part_cache[part_id]
+
+def decode_part(data, typ):
+    if type(data) is bytes:
+        return typ.decode_bytes(data)
+    else:
+        return decode(data, typ)
 
 def do_step(store_holder, step, msg_buffer, fixSignatures=False):
     key = get_step_key(step)
@@ -47,7 +59,7 @@ def do_step(store_holder, step, msg_buffer, fixSignatures=False):
             spec.on_tick(store, store.time+1)
         store_holder[0] = store
     elif key == 'block':
-        block = decode(step_data, spec.SignedBeaconBlock)
+        block = decode_part(step_data, spec.SignedBeaconBlock)
         if fixSignatures:
             pre = store.block_states[block.message.parent_root].copy()
             spec.process_slots(pre,block.message.slot)
@@ -63,7 +75,7 @@ def do_step(store_holder, step, msg_buffer, fixSignatures=False):
             #raise
         msg_buffer.extend(block.message.body.attestations)
     elif key == "attestation":
-        attestation = decode(step_data, spec.Attestation)
+        attestation = decode_part(step_data, spec.Attestation)
         store = store_copy(store_holder[0])
         try:
             spec.on_attestation(store, attestation)
@@ -117,7 +129,7 @@ def run_test(n, test_case):
         bls.bls_active = True
     else:
         bls.bls_active = default_bls_active
-    genesis_state = decode(load_cached_part(test_case['genesis']), spec.BeaconState)
+    genesis_state = decode_part(load_cached_part(test_case['genesis']), spec.BeaconState)
     try:
         do_steps(genesis_state, test_case['steps'])
     except Exception as e:
