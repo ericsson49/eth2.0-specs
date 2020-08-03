@@ -26,7 +26,7 @@ def run_tests(test_suite):
             
 test_suite = []
 
-gf1,gf2 = (2,2)
+gf1,gf2 = (0,1)
 
 genesis_state = get_genesis_state(chain_start = make_chain_start())
 #genesis_state = get_genesis_state(chain_start_file="chain_start_v0.12x.yaml")
