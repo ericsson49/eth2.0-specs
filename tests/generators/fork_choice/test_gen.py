@@ -237,7 +237,7 @@ def get_attesters(st, slot, head):
     store = st.store
     state = advance_state(store.block_states[head], slot)
     attesters = []
-    for index in range(spec.get_committee_count_at_slot(state, slot)):
+    for index in range(spec.get_committee_count_per_slot(state, slot)):
         committee = spec.get_beacon_committee(state, slot, index)
         attesters.extend(committee)
     return attesters
@@ -260,7 +260,7 @@ def mk_atts(st, slot, head_ref, attesters=None, bad_signature=False, bad_index=F
     epoch_boundary_block_root = head if start_slot == state.slot else spec.get_block_root_at_slot(state, start_slot)
     target_chkpt = spec.Checkpoint(epoch=spec.get_current_epoch(state), root=epoch_boundary_block_root)
     atts = []
-    committee_count = spec.get_committee_count_at_slot(state, slot)
+    committee_count = spec.get_committee_count_per_slot(state, slot)
     for index in range(committee_count):
         data = spec.AttestationData(slot=slot, index=index, beacon_block_root=head,
             source=state.current_justified_checkpoint,
