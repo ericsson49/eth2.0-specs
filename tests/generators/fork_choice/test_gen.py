@@ -357,5 +357,8 @@ def cache_object(path, prefix, o):
         cnt = len(list(path.glob(prefix + "_*.yaml")))
         p = path.joinpath(prefix + "_" + str(cnt) + ".yaml")
         yaml.dump(encode(o), p)
-        cache[root] = p.relative_to(path)
+        pssz = path.joinpath(prefix + "_" + str(cnt) + ".ssz")
+        with open(pssz, 'wb') as f:
+            f.write(o.encode_bytes())
+        cache[root] = pssz.relative_to(path)
     return cache[root]
