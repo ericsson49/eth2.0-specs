@@ -107,7 +107,10 @@ class State(object):
             checks[kind] = {'value': param, 'optional': optional}
     
     def head_check(self):
-        self._add_check('head', encode(self.get_head()))
+        try:
+            self._add_check('head', encode(self.get_head()))
+        except:
+            pass
     
     def block_in_store_check(self, block_root):
         assert block_root in self.store.blocks
