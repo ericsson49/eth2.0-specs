@@ -48,8 +48,10 @@ def block_root(b):
     return spec.hash_tree_root(b.message)
 
 def advance_state(state, slot):
+    assert state.slot <= slot
     r = state.copy()
-    spec.process_slots(r, slot)
+    if state.slot < slot:
+        spec.process_slots(r, slot)
     return r
 
 def is_finalized_checkpoint_ancestor(store, signed_block):
@@ -209,7 +211,8 @@ def mk_block(st, slot, parent_ref, atts=[], graffiti=0,bad_parent=False, bad_sta
     else:
         raise Exception("parent_root should be either a block or a root")
     store = st.store
-    state = advance_state(store.block_states[parent_root], slot)
+    parent_state = store.block_states[parent_root].copy()
+    state = advance_state(parent_state, slot)
     proposer = spec.get_beacon_proposer_index(state)
     SK = pubkey_to_privkey[state.validators[proposer].pubkey]
     randao_reveal = spec.get_epoch_signature(state, spec.BeaconBlock(slot=slot), SK)
@@ -221,7 +224,7 @@ def mk_block(st, slot, parent_ref, atts=[], graffiti=0,bad_parent=False, bad_sta
     if bad_state:
         block.state_root = spec.Root()
     else:
-        block.state_root = spec.compute_new_state_root(state, block)
+        block.state_root = spec.compute_new_state_root(parent_state, block)
     if bad_parent:
         block.parent_root = spec.Root()
     if bad_signature:
