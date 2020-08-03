@@ -1425,18 +1425,20 @@ def valid_attestation__testAttestation_early_before_block():
   st.send_block(b_1)
   head_4 = st.get_head()
   st.set_slot(4)
-  assert st.get_head() == block_root(b_1)
-  atts_2 = mk_atts(st,4,b_0,None)
+  b_min = min(b_0,b_1,key=block_root)
+  b_max = max(b_0,b_1,key=block_root)
+  assert st.get_head() == block_root(b_max)
+  atts_2 = mk_atts(st,4,b_min,None)
   for a in atts_2:
     st.send_attestation(a)
 
   st.set_slot(5)
-  assert st.get_head() == block_root(b_0)
+  assert st.get_head() == block_root(b_min)
   atts_3 = st.att_cache[:]
   st.att_cache.clear()
-  b_2 = mk_block(st, 4, block_root(b_1), atts_3)
+  b_2 = mk_block(st, 4, block_root(b_max), atts_3)
   st.send_block(b_2)
-  assert st.get_head() == block_root(b_0)
+  assert st.get_head() == block_root(b_min)
   dump_events(st, "valid_attestation__testAttestation_early_before_block")
 
 test_suite.append(valid_attestation__testAttestation_early_before_block)
@@ -1457,19 +1459,21 @@ def valid_attestation__testAttestation_late():
   st.send_block(b_1)
   head_4 = st.get_head()
   st.set_slot(4)
-  atts_2 = mk_atts(st,4,b_0,None)
+  b_min = min(b_0,b_1,key=block_root)
+  b_max = max(b_0,b_1,key=block_root)
+  atts_2 = mk_atts(st,4,b_min,None)
   st.set_slot(5)
   atts_3 = st.att_cache[:]
   st.att_cache.clear()
-  b_2 = mk_block(st, 5, block_root(b_1), atts_3)
+  b_2 = mk_block(st, 5, block_root(b_max), atts_3)
   st.send_block(b_2)
   assert st.get_head() == block_root(b_2)
   for a in atts_2:
     st.send_attestation(a)
 
-  assert st.get_head() == block_root(b_0)
+  assert st.get_head() == block_root(b_min)
   st.set_slot(6)
-  assert st.get_head() == block_root(b_0)
+  assert st.get_head() == block_root(b_min)
   dump_events(st, "valid_attestation__testAttestation_late")
 
 test_suite.append(valid_attestation__testAttestation_late)
