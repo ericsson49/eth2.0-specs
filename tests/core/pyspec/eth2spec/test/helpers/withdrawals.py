@@ -144,6 +144,59 @@ def prepare_withdrawal_request(spec, state, validator_index, address=None, amoun
     )
 
 
+def is_valid_withdrawal_request(spec, state, withdrawal_request) -> bool:
+    amount = withdrawal_request.amount
+    is_full_exit_request = amount == spec.FULL_EXIT_REQUEST_AMOUNT
+
+    # If partial withdrawal queue is full, only full exits are processed
+    if len(state.pending_partial_withdrawals) == spec.PENDING_PARTIAL_WITHDRAWALS_LIMIT and not is_full_exit_request:
+        return False
+
+    validator_pubkeys = [v.pubkey for v in state.validators]
+    # Verify pubkey exists
+    request_pubkey = withdrawal_request.validator_pubkey
+    if request_pubkey not in validator_pubkeys:
+        return False
+    index = spec.ValidatorIndex(validator_pubkeys.index(request_pubkey))
+    validator = state.validators[index]
+
+    # Verify withdrawal credentials
+    has_correct_credential = spec.has_execution_withdrawal_credential(validator)
+    is_correct_source_address = (
+        validator.withdrawal_credentials[12:] == withdrawal_request.source_address
+    )
+    if not (has_correct_credential and is_correct_source_address):
+        return False
+    # Verify the validator is active
+    if not spec.is_active_validator(validator, spec.get_current_epoch(state)):
+        return False
+    # Verify exit has not been initiated
+    if validator.exit_epoch != spec.FAR_FUTURE_EPOCH:
+        return False
+    # Verify the validator has been active long enough
+    if spec.get_current_epoch(state) < validator.activation_epoch + spec.config.SHARD_COMMITTEE_PERIOD:
+        return False
+
+    pending_balance_to_withdraw = spec.get_pending_balance_to_withdraw(state, index)
+
+    if is_full_exit_request:
+        # Only exit validator if it has no pending withdrawals in the queue
+        if pending_balance_to_withdraw == 0:
+            return True
+        return False
+
+    has_sufficient_effective_balance = validator.effective_balance >= spec.MIN_ACTIVATION_BALANCE
+    has_excess_balance = state.balances[index] > spec.MIN_ACTIVATION_BALANCE + pending_balance_to_withdraw
+
+    # Only allow partial withdrawals with compounding withdrawal credentials
+    if (spec.has_compounding_withdrawal_credential(validator)
+            and has_sufficient_effective_balance
+            and has_excess_balance):
+        return True
+
+    return False
+
+
 #
 # Run processing
 #

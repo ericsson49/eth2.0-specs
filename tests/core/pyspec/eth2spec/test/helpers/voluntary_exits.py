@@ -1,7 +1,7 @@
 from random import Random
 from eth2spec.utils import bls
 from eth2spec.test.context import expect_assertion_error
-from eth2spec.test.helpers.forks import is_post_deneb
+from eth2spec.test.helpers.forks import is_post_deneb, is_post_electra
 from eth2spec.test.helpers.keys import privkeys
 
 
@@ -34,6 +34,28 @@ def sign_voluntary_exit(spec, state, voluntary_exit, privkey, fork_version=None)
         message=voluntary_exit,
         signature=bls.Sign(privkey, signing_root)
     )
+
+
+def is_valid_voluntary_exit(spec, state, voluntary_exit) -> bool:
+    validator = state.validators[voluntary_exit.validator_index]
+    # Verify the validator is active
+    if not spec.is_active_validator(validator, spec.get_current_epoch(state)):
+        return False
+    # Verify exit has not been initiated
+    if validator.exit_epoch != spec.FAR_FUTURE_EPOCH:
+        return False
+    # Exits must specify an epoch when they become valid; they are not valid before then
+    if spec.get_current_epoch(state) < voluntary_exit.epoch:
+        return False
+    # Verify the validator has been active long enough
+    if spec.get_current_epoch(state) < validator.activation_epoch + spec.config.SHARD_COMMITTEE_PERIOD:
+        return False
+    # Only exit validator if it has no pending withdrawals in the queue
+    if is_post_electra(spec):
+        if spec.get_pending_balance_to_withdraw(state, voluntary_exit.validator_index) > 0:
+            return False
+
+    return True
 
 
 #
