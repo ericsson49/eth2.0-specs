@@ -102,7 +102,7 @@ def run_test(test_info):
                     expected_time = value
                     assert store.time == expected_time
                 elif check == 'head':
-                    assert str(spec.get_head(store)) == value['root']
+                    assert str(spec.get_head(store)) == value['root'], (spec.get_head(store), value['root'])
                 elif check == 'proposer_boost_root':
                     assert str(store.proposer_boost_root) == str(value)
                 elif check == 'justified_checkpoint':
