@@ -2,15 +2,9 @@
 
 # <FORK_NAME> -- The Beacon Chain
 
-## Table of contents
-<!-- TOC -->
-<!-- START doctoc generated TOC please keep comment here to allow auto update -->
-<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+<!-- mdformat-toc start --slug=github --no-anchors --maxlevel=6 --minlevel=2 -->
 
-<!-- END doctoc generated TOC please keep comment here to allow auto update -->
-<!-- /TOC -->
-
-
+<!-- mdformat-toc end -->
 
 ## Introduction
 
@@ -27,7 +21,6 @@
 | `<CONSTANT_NAME>` | `<VALUE>`` |
 
 ## Preset
-
 
 ### [CATEGORY OF PRESETS]
 
@@ -64,21 +57,4 @@ class CONTAINER_NAME(Container):
 
 ### Epoch processing
 
-
 ### Block processing
-
-    
-
-    
-## Testing
-
-*Note*: The function `initialize_beacon_state_from_eth1` is modified for pure <FORK_NAME> testing only.
-
-```python
-def initialize_beacon_state_from_eth1(eth1_block_hash: Hash32,
-                                      eth1_timestamp: uint64,
-                                      deposits: Sequence[Deposit],
-                                      execution_payload_header: ExecutionPayloadHeader=ExecutionPayloadHeader()
-                                      ) -> BeaconState:
-    ...
-```

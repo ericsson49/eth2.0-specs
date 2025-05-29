@@ -1,9 +1,6 @@
 # Optimistic Sync
 
-## Table of contents
-<!-- TOC -->
-<!-- START doctoc generated TOC please keep comment here to allow auto update -->
-<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+<!-- mdformat-toc start --slug=github --no-anchors --maxlevel=6 --minlevel=2 -->
 
 - [Introduction](#introduction)
 - [Constants](#constants)
@@ -30,8 +27,7 @@
   - [What about Light Clients?](#what-about-light-clients)
   - [What if `TERMINAL_BLOCK_HASH` is used?](#what-if-terminal_block_hash-is-used)
 
-<!-- END doctoc generated TOC please keep comment here to allow auto update -->
-<!-- /TOC -->
+<!-- mdformat-toc end -->
 
 ## Introduction
 
@@ -326,7 +322,7 @@ optimistic blocks (and vice-versa).
 
 ### Why sync optimistically?
 
-Most execution engines use state sync as a default sync mechanism on Ethereum Mainnet 
+Most execution engines use state sync as a default sync mechanism on Ethereum Mainnet
 because executing blocks from genesis takes several weeks on commodity hardware.
 
 State sync requires the knowledge of the current head of the chain to converge eventually.

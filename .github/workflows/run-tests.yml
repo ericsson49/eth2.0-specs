@@ -1,108 +1,64 @@
-name: Run spec tests and linter
+name: Run tests
 
 defaults:
   run:
     shell: zsh {0}
 
-env:
-  TEST_PRESET_TYPE: "minimal"
-
 on:
   push:
-    branches:
-      - dev
-      - master
+    branches: [dev, master]
   pull_request:
-  workflow_dispatch:
-    inputs:
-      test_preset_type:
-        default: minimal
-        description: Type of test to run, either mainnet or minimal
-        type: string
-        required: true
-  schedule:
-    - cron: '0 0 * * *'
 
 jobs:
-  table_of_contents:
-   runs-on: [self-hosted-ghr-custom, size-s-x64, profile-consensusSpecs]
-   steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: ''
-      - name: Check table of contents
-        run: npm install -g doctoc@2.2.0 && make check_toc
-
-  codespell:
-   runs-on: [self-hosted-ghr-custom, size-s-x64, profile-consensusSpecs]
-   steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-          cache: ''
-      - name: Check codespell
-        run: make codespell
-
   lint:
-    runs-on: [self-hosted-ghr-custom, size-l-x64, profile-consensusSpecs]
+    runs-on: [self-hosted-ghr-custom, size-s-x64, profile-consensusSpecs]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Setup python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: '3.10'
-          cache: ''
-      - name: Install pyspec requirements
-        run: make install_test
+          python-version: '3.12'
+          cache: 'pip'
       - name: Run linter for pyspec
-        run: make lint
-      - name: Run linter for test generators
-        run: make lint_generators
+        run: |
+          make lint
+          git diff --exit-code
 
-  pyspec-tests:
+  whitespace:
+    runs-on: [self-hosted-ghr-custom, size-s-x64, profile-consensusSpecs]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check for trailing whitespace
+        run: |
+          if git grep -n '[[:blank:]]$'; then
+            echo "Trailing whitespace found. Please fix it."
+            exit 1
+          fi
+
+  tests:
+    needs: [lint, whitespace]
     runs-on: [self-hosted-ghr-custom, size-xl-x64, profile-consensusSpecs]
-    needs: [lint,codespell,table_of_contents]
     strategy:
       matrix:
-        version: ["phase0", "altair", "bellatrix", "capella", "deneb", "electra", "whisk", "eip7594"]
+        fork:
+          - phase0
+          - altair
+          - bellatrix
+          - capella
+          - deneb
+          - electra
+          - fulu
+          - eip7732
+          - eip7805
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Setup python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: '3.10'
-          cache: ''
-      - name: set TEST_PRESET_TYPE
-        if: github.event.inputs.test_preset_type != ''
-        run: |
-          echo "spec_test_preset_type=${{ github.event.inputs.test_preset_type || env.TEST_PRESET_TYPE }}" >> $GITHUB_ENV
-      - name: set TEST_PRESET_TYPE
-        if: ${{ (github.event_name == 'push' && github.ref_name != 'master') || github.event_name == 'pull_request' }}
-        run: |
-          echo "spec_test_preset_type=${{ env.TEST_PRESET_TYPE}}" >> $GITHUB_ENV
-      - name: set TEST_PRESET_TYPE
-        if: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
-        run: |
-          echo "spec_test_preset_type=mainnet" >> $GITHUB_ENV
-      - name: set TEST_PRESET_TYPE
-        if: github.event.schedule=='0 0 * * *'
-        run: |
-          echo "spec_test_preset_type=mainnet" >> $GITHUB_ENV
-      - name: Install pyspec requirements
-        run: make install_test
-      - name: test-${{ matrix.version }}
-        run: make citest fork=${{ matrix.version }} TEST_PRESET_TYPE=${{env.spec_test_preset_type}}
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-reports-${{ matrix.version }}
-          path: tests/core/pyspec/test-reports
+          python-version: '3.12'
+          cache: 'pip'
+      - name: Run pyspec tests for ${{ matrix.fork }}
+        run: make test preset=minimal fork=${{ matrix.fork }}

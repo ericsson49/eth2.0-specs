@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, NamedTuple, Optional, List
+from typing import Dict, List, NamedTuple, Optional
 
 
 class ProtocolDefinition(NamedTuple):
@@ -18,7 +18,9 @@ class SpecObject(NamedTuple):
     functions: Dict[str, str]
     protocols: Dict[str, ProtocolDefinition]
     custom_types: Dict[str, str]
+    preset_dep_custom_types: Dict[str, str]  # the types that depend on presets
     constant_vars: Dict[str, VariableDefinition]
+    preset_dep_constant_vars: Dict[str, VariableDefinition]
     preset_vars: Dict[str, VariableDefinition]
     config_vars: Dict[str, VariableDefinition]
     ssz_dep_constants: Dict[str, str]  # the constants that depend on ssz_objects

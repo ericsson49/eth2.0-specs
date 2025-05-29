@@ -1,12 +1,6 @@
 # Altair Light Client -- Sync Protocol
 
-**Notice**: This document is a work-in-progress for researchers and implementers.
-
-## Table of contents
-
-<!-- TOC -->
-<!-- START doctoc generated TOC please keep comment here to allow auto update -->
-<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+<!-- mdformat-toc start --slug=github --no-anchors --maxlevel=6 --minlevel=2 -->
 
 - [Introduction](#introduction)
 - [Custom types](#custom-types)
@@ -21,6 +15,9 @@
   - [`LightClientOptimisticUpdate`](#lightclientoptimisticupdate)
   - [`LightClientStore`](#lightclientstore)
 - [Helper functions](#helper-functions)
+  - [`finalized_root_gindex_at_slot`](#finalized_root_gindex_at_slot)
+  - [`current_sync_committee_gindex_at_slot`](#current_sync_committee_gindex_at_slot)
+  - [`next_sync_committee_gindex_at_slot`](#next_sync_committee_gindex_at_slot)
   - [`is_valid_light_client_header`](#is_valid_light_client_header)
   - [`is_sync_committee_update`](#is_sync_committee_update)
   - [`is_finality_update`](#is_finality_update)
@@ -28,6 +25,7 @@
   - [`is_next_sync_committee_known`](#is_next_sync_committee_known)
   - [`get_safety_threshold`](#get_safety_threshold)
   - [`get_subtree_index`](#get_subtree_index)
+  - [`is_valid_normalized_merkle_branch`](#is_valid_normalized_merkle_branch)
   - [`compute_sync_committee_period_at_slot`](#compute_sync_committee_period_at_slot)
 - [Light client initialization](#light-client-initialization)
   - [`initialize_light_client_store`](#initialize_light_client_store)
@@ -39,48 +37,50 @@
   - [`process_light_client_finality_update`](#process_light_client_finality_update)
   - [`process_light_client_optimistic_update`](#process_light_client_optimistic_update)
 
-<!-- END doctoc generated TOC please keep comment here to allow auto update -->
-<!-- /TOC -->
+<!-- mdformat-toc end -->
 
 ## Introduction
 
-The beacon chain is designed to be light client friendly for constrained environments to
-access Ethereum with reasonable safety and liveness.
-Such environments include resource-constrained devices (e.g. phones for trust-minimized wallets)
-and metered VMs (e.g. blockchain VMs for cross-chain bridges).
+The beacon chain is designed to be light client friendly for constrained
+environments to access Ethereum with reasonable safety and liveness. Such
+environments include resource-constrained devices (e.g. phones for
+trust-minimized wallets) and metered VMs (e.g. blockchain VMs for cross-chain
+bridges).
 
 This document suggests a minimal light client design for the beacon chain that
-uses sync committees introduced in [this beacon chain extension](../beacon-chain.md).
+uses sync committees introduced in
+[this beacon chain extension](../beacon-chain.md).
 
 Additional documents describe how the light client sync protocol can be used:
+
 - [Full node](./full-node.md)
 - [Light client](./light-client.md)
 - [Networking](./p2p-interface.md)
 
 ## Custom types
 
-| Name | SSZ equivalent | Description |
-| - | - | - |
-| `FinalityBranch` | `Vector[Bytes32, floorlog2(FINALIZED_ROOT_GINDEX)]` | Merkle branch of `finalized_checkpoint.root` within `BeaconState` |
-| `CurrentSyncCommitteeBranch` | `Vector[Bytes32, floorlog2(CURRENT_SYNC_COMMITTEE_GINDEX)]` | Merkle branch of `current_sync_committee` within `BeaconState` |
-| `NextSyncCommitteeBranch` | `Vector[Bytes32, floorlog2(NEXT_SYNC_COMMITTEE_GINDEX)]` | Merkle branch of `next_sync_committee` within `BeaconState` |
+| Name                         | SSZ equivalent                                              | Description                                                       |
+| ---------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- |
+| `FinalityBranch`             | `Vector[Bytes32, floorlog2(FINALIZED_ROOT_GINDEX)]`         | Merkle branch of `finalized_checkpoint.root` within `BeaconState` |
+| `CurrentSyncCommitteeBranch` | `Vector[Bytes32, floorlog2(CURRENT_SYNC_COMMITTEE_GINDEX)]` | Merkle branch of `current_sync_committee` within `BeaconState`    |
+| `NextSyncCommitteeBranch`    | `Vector[Bytes32, floorlog2(NEXT_SYNC_COMMITTEE_GINDEX)]`    | Merkle branch of `next_sync_committee` within `BeaconState`       |
 
 ## Constants
 
-| Name | Value |
-| - | - |
-| `FINALIZED_ROOT_GINDEX` | `get_generalized_index(BeaconState, 'finalized_checkpoint', 'root')` (= 105) |
-| `CURRENT_SYNC_COMMITTEE_GINDEX` | `get_generalized_index(BeaconState, 'current_sync_committee')` (= 54) |
-| `NEXT_SYNC_COMMITTEE_GINDEX` | `get_generalized_index(BeaconState, 'next_sync_committee')` (= 55) |
+| Name                            | Value                                                                        |
+| ------------------------------- | ---------------------------------------------------------------------------- |
+| `FINALIZED_ROOT_GINDEX`         | `get_generalized_index(BeaconState, 'finalized_checkpoint', 'root')` (= 105) |
+| `CURRENT_SYNC_COMMITTEE_GINDEX` | `get_generalized_index(BeaconState, 'current_sync_committee')` (= 54)        |
+| `NEXT_SYNC_COMMITTEE_GINDEX`    | `get_generalized_index(BeaconState, 'next_sync_committee')` (= 55)           |
 
 ## Preset
 
 ### Misc
 
-| Name | Value | Unit | Duration |
-| - | - | - | - |
-| `MIN_SYNC_COMMITTEE_PARTICIPANTS` | `1` | validators | |
-| `UPDATE_TIMEOUT` | `SLOTS_PER_EPOCH * EPOCHS_PER_SYNC_COMMITTEE_PERIOD` | slots | ~27.3 hours |
+| Name                              | Value                                                | Unit       | Duration    |
+| --------------------------------- | ---------------------------------------------------- | ---------- | ----------- |
+| `MIN_SYNC_COMMITTEE_PARTICIPANTS` | `1`                                                  | validators |             |
+| `UPDATE_TIMEOUT`                  | `SLOTS_PER_EPOCH * EPOCHS_PER_SYNC_COMMITTEE_PERIOD` | slots      | ~27.3 hours |
 
 ## Containers
 
@@ -92,7 +92,9 @@ class LightClientHeader(Container):
     beacon: BeaconBlockHeader
 ```
 
-Future upgrades may introduce additional fields to this structure, and validate them by extending [`is_valid_light_client_header`](#is_valid_light_client_header).
+Future upgrades may introduce additional fields to this structure, and validate
+them by extending
+[`is_valid_light_client_header`](#is_valid_light_client_header).
 
 ### `LightClientBootstrap`
 
@@ -171,6 +173,30 @@ class LightClientStore(object):
 
 ## Helper functions
 
+### `finalized_root_gindex_at_slot`
+
+```python
+def finalized_root_gindex_at_slot(slot: Slot) -> GeneralizedIndex:
+    # pylint: disable=unused-argument
+    return FINALIZED_ROOT_GINDEX
+```
+
+### `current_sync_committee_gindex_at_slot`
+
+```python
+def current_sync_committee_gindex_at_slot(slot: Slot) -> GeneralizedIndex:
+    # pylint: disable=unused-argument
+    return CURRENT_SYNC_COMMITTEE_GINDEX
+```
+
+### `next_sync_committee_gindex_at_slot`
+
+```python
+def next_sync_committee_gindex_at_slot(slot: Slot) -> GeneralizedIndex:
+    # pylint: disable=unused-argument
+    return NEXT_SYNC_COMMITTEE_GINDEX
+```
+
 ### `is_valid_light_client_header`
 
 ```python
@@ -204,7 +230,7 @@ def is_better_update(new_update: LightClientUpdate, old_update: LightClientUpdat
     new_has_supermajority = new_num_active_participants * 3 >= max_active_participants * 2
     old_has_supermajority = old_num_active_participants * 3 >= max_active_participants * 2
     if new_has_supermajority != old_has_supermajority:
-        return new_has_supermajority > old_has_supermajority
+        return new_has_supermajority
     if not new_has_supermajority and new_num_active_participants != old_num_active_participants:
         return new_num_active_participants > old_num_active_participants
 
@@ -246,6 +272,8 @@ def is_better_update(new_update: LightClientUpdate, old_update: LightClientUpdat
     # Tiebreaker 2: Prefer older data (fewer changes to best)
     if new_update.attested_header.beacon.slot != old_update.attested_header.beacon.slot:
         return new_update.attested_header.beacon.slot < old_update.attested_header.beacon.slot
+
+    # Tiebreaker 3: Prefer updates with earlier signature slots
     return new_update.signature_slot < old_update.signature_slot
 ```
 
@@ -273,6 +301,22 @@ def get_subtree_index(generalized_index: GeneralizedIndex) -> uint64:
     return uint64(generalized_index % 2**(floorlog2(generalized_index)))
 ```
 
+### `is_valid_normalized_merkle_branch`
+
+```python
+def is_valid_normalized_merkle_branch(leaf: Bytes32,
+                                      branch: Sequence[Bytes32],
+                                      gindex: GeneralizedIndex,
+                                      root: Root) -> bool:
+    depth = floorlog2(gindex)
+    index = get_subtree_index(gindex)
+    num_extra = len(branch) - depth
+    for i in range(num_extra):
+        if branch[i] != Bytes32():
+            return False
+    return is_valid_merkle_branch(leaf, branch[num_extra:], depth, index, root)
+```
+
 ### `compute_sync_committee_period_at_slot`
 
 ```python
@@ -282,7 +326,10 @@ def compute_sync_committee_period_at_slot(slot: Slot) -> uint64:
 
 ## Light client initialization
 
-A light client maintains its state in a `store` object of type `LightClientStore`. `initialize_light_client_store` initializes a new `store` with a received `LightClientBootstrap` derived from a given `trusted_block_root`.
+A light client maintains its state in a `store` object of type
+`LightClientStore`. `initialize_light_client_store` initializes a new `store`
+with a received `LightClientBootstrap` derived from a given
+`trusted_block_root`.
 
 ### `initialize_light_client_store`
 
@@ -292,11 +339,10 @@ def initialize_light_client_store(trusted_block_root: Root,
     assert is_valid_light_client_header(bootstrap.header)
     assert hash_tree_root(bootstrap.header.beacon) == trusted_block_root
 
-    assert is_valid_merkle_branch(
+    assert is_valid_normalized_merkle_branch(
         leaf=hash_tree_root(bootstrap.current_sync_committee),
         branch=bootstrap.current_sync_committee_branch,
-        depth=floorlog2(CURRENT_SYNC_COMMITTEE_GINDEX),
-        index=get_subtree_index(CURRENT_SYNC_COMMITTEE_GINDEX),
+        gindex=current_sync_committee_gindex_at_slot(bootstrap.header.beacon.slot),
         root=bootstrap.header.beacon.state_root,
     )
 
@@ -313,11 +359,19 @@ def initialize_light_client_store(trusted_block_root: Root,
 
 ## Light client state updates
 
-- A light client receives objects of type `LightClientUpdate`, `LightClientFinalityUpdate` and `LightClientOptimisticUpdate`:
-    - **`update: LightClientUpdate`**: Every `update` triggers `process_light_client_update(store, update, current_slot, genesis_validators_root)` where `current_slot` is the current slot based on a local clock.
-    - **`finality_update: LightClientFinalityUpdate`**: Every `finality_update` triggers `process_light_client_finality_update(store, finality_update, current_slot, genesis_validators_root)`.
-    - **`optimistic_update: LightClientOptimisticUpdate`**: Every `optimistic_update` triggers `process_light_client_optimistic_update(store, optimistic_update, current_slot, genesis_validators_root)`.
-- `process_light_client_store_force_update` MAY be called based on use case dependent heuristics if light client sync appears stuck.
+- A light client receives objects of type `LightClientUpdate`,
+  `LightClientFinalityUpdate` and `LightClientOptimisticUpdate`:
+  - **`update: LightClientUpdate`**: Every `update` triggers
+    `process_light_client_update(store, update, current_slot, genesis_validators_root)`
+    where `current_slot` is the current slot based on a local clock.
+  - **`finality_update: LightClientFinalityUpdate`**: Every `finality_update`
+    triggers
+    `process_light_client_finality_update(store, finality_update, current_slot, genesis_validators_root)`.
+  - **`optimistic_update: LightClientOptimisticUpdate`**: Every
+    `optimistic_update` triggers
+    `process_light_client_optimistic_update(store, optimistic_update, current_slot, genesis_validators_root)`.
+- `process_light_client_store_force_update` MAY be called based on use case
+  dependent heuristics if light client sync appears stuck.
 
 ### `validate_light_client_update`
 
@@ -364,11 +418,10 @@ def validate_light_client_update(store: LightClientStore,
         else:
             assert is_valid_light_client_header(update.finalized_header)
             finalized_root = hash_tree_root(update.finalized_header.beacon)
-        assert is_valid_merkle_branch(
+        assert is_valid_normalized_merkle_branch(
             leaf=finalized_root,
             branch=update.finality_branch,
-            depth=floorlog2(FINALIZED_ROOT_GINDEX),
-            index=get_subtree_index(FINALIZED_ROOT_GINDEX),
+            gindex=finalized_root_gindex_at_slot(update.attested_header.beacon.slot),
             root=update.attested_header.beacon.state_root,
         )
 
@@ -379,11 +432,10 @@ def validate_light_client_update(store: LightClientStore,
     else:
         if update_attested_period == store_period and is_next_sync_committee_known(store):
             assert update.next_sync_committee == store.next_sync_committee
-        assert is_valid_merkle_branch(
+        assert is_valid_normalized_merkle_branch(
             leaf=hash_tree_root(update.next_sync_committee),
             branch=update.next_sync_committee_branch,
-            depth=floorlog2(NEXT_SYNC_COMMITTEE_GINDEX),
-            index=get_subtree_index(NEXT_SYNC_COMMITTEE_GINDEX),
+            gindex=next_sync_committee_gindex_at_slot(update.attested_header.beacon.slot),
             root=update.attested_header.beacon.state_root,
         )
 
