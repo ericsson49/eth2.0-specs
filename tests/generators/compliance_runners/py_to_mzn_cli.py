@@ -1,10 +1,7 @@
 import argparse
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-
-from tests.generators.compliance_runners.py_to_mzn import Convertor
+from .py_to_mzn import Convertor
 
 
 def main() -> None:

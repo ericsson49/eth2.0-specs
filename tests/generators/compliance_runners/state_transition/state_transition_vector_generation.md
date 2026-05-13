@@ -495,3 +495,32 @@ Then add Fulu-specific execution payload cases:
 
 This order proves the approach on small finite models before touching the
 broader execution payload surface.
+
+## Initial Implementation
+
+The first implementation checkpoint lives under:
+
+```text
+tests/generators/compliance_runners/state_transition/
+```
+
+It includes:
+
+- `models/validator_state.py`: a Python-authored finite validator-state profile
+  model.
+- `abstract_cases.py`: helpers to transpile the model to MiniZinc, solve it,
+  and classify solved profiles by target handler.
+- `generate_abstract_cases.py`: a small CLI for inspecting the transpiled
+  MiniZinc model and selected abstract cases.
+
+Useful commands:
+
+```bash
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_abstract_cases --emit-mzn /tmp/validator_state.mzn
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_abstract_cases --per-handler-limit 5
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_abstract_cases --handler withdrawal_request --per-handler-limit 10
+```
+
+The current output is intentionally abstract YAML. The next implementation step
+is to materialize these profiles into concrete `pre`, operation input, and
+`post` SSZ parts for the `operations` runner.

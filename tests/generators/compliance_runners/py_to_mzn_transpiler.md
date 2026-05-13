@@ -395,14 +395,14 @@ tests/generators/compliance_runners/py_to_mzn.py
 The current CLI lives at:
 
 ```text
-tests/generators/compliance_runners/fork_choice/py_to_mzn_cli.py
+tests/generators/compliance_runners/py_to_mzn_cli.py
 ```
 
 Usage:
 
 ```bash
-python3 tests/generators/compliance_runners/fork_choice/py_to_mzn_cli.py vs.py
-python3 tests/generators/compliance_runners/fork_choice/py_to_mzn_cli.py vs.py -o vs.mzn
+uv run --extra test python -m tests.generators.compliance_runners.py_to_mzn_cli vs.py
+uv run --extra test python -m tests.generators.compliance_runners.py_to_mzn_cli vs.py -o vs.mzn
 ```
 
 It prints MiniZinc to stdout by default and writes to a file when `--output` is
