@@ -528,6 +528,7 @@ is to materialize these profiles into concrete `pre`, operation input, and
 The first materializers support:
 
 - `operations/deposit`
+- `operations/bls_to_execution_change`
 - `operations/deposit_request`
 - `operations/voluntary_exit`
 - `operations/withdrawal_request`

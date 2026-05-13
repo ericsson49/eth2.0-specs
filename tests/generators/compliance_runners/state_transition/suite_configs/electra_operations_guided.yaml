@@ -7,6 +7,7 @@ generation:
   preset: minimal
   handlers:
     - deposit
+    - bls_to_execution_change
     - deposit_request
     - voluntary_exit
     - withdrawal_request

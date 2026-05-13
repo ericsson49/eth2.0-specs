@@ -14,6 +14,7 @@ from eth_consensus_specs.utils import bls
 
 OPERATION_INPUTS = {
     "deposit": ("deposit", "Deposit"),
+    "bls_to_execution_change": ("address_change", "SignedBLSToExecutionChange"),
     "deposit_request": ("deposit_request", "DepositRequest"),
     "voluntary_exit": ("voluntary_exit", "SignedVoluntaryExit"),
     "withdrawal_request": ("withdrawal_request", "WithdrawalRequest"),
@@ -22,6 +23,7 @@ OPERATION_INPUTS = {
 
 OPERATION_PROCESSORS = {
     "deposit": "process_deposit",
+    "bls_to_execution_change": "process_bls_to_execution_change",
     "deposit_request": "process_deposit_request",
     "voluntary_exit": "process_voluntary_exit",
     "withdrawal_request": "process_withdrawal_request",
@@ -70,7 +72,8 @@ def get_test_case(spec, test_dir: Path, handler: str):
 
 
 def decode_optional_operation(spec, test_dir: Path, handler: str):
-    if not (test_dir / f"{handler}.ssz_snappy").exists():
+    input_name = OPERATION_INPUTS.get(handler, (handler, None))[0]
+    if not (test_dir / f"{input_name}.ssz_snappy").exists():
         return None
     return decode_operation(spec, test_dir, handler)
 

@@ -4,6 +4,9 @@ targets:
       functions:
         - process_deposit
         - apply_deposit
+    bls_to_execution_change:
+      functions:
+        - process_bls_to_execution_change
     deposit_request:
       functions:
         - process_deposit_request
@@ -39,6 +42,18 @@ intents:
         outcome: assertion_failure
       invalid_signature:
         outcome: changed
+
+    bls_to_execution_change:
+      success:
+        outcome: changed
+      out_of_range:
+        outcome: assertion_failure
+      not_bls_credentials:
+        outcome: assertion_failure
+      pubkey_mismatch:
+        outcome: assertion_failure
+      bad_signature:
+        outcome: assertion_failure
 
     deposit_request:
       start_index_unset:

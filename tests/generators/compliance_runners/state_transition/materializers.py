@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from eth_consensus_specs.test.helpers.bls_to_execution_changes import get_signed_address_change
 from eth_consensus_specs.test.helpers.deposits import (
     prepare_pending_deposit,
     prepare_state_and_deposit,
 )
-from eth_consensus_specs.test.helpers.keys import privkeys
+from eth_consensus_specs.test.helpers.keys import privkeys, pubkeys
 from eth_consensus_specs.test.helpers.voluntary_exits import sign_voluntary_exit
 from eth_consensus_specs.test.helpers.withdrawals import (
     set_compounding_withdrawal_credential_with_balance,
@@ -27,6 +28,7 @@ EPOCH_PROCESSING_RUNNER_NAME = "epoch_processing"
 SUITE_NAME = "minizinc_abstract"
 MATERIALIZED_HANDLER_NAMES = (
     "deposit",
+    "bls_to_execution_change",
     "deposit_request",
     "voluntary_exit",
     "withdrawal_request",
@@ -74,6 +76,14 @@ def materialize_case(
     )
     if abstract_case.handler_name == "deposit":
         return materialize_deposit(
+            spec,
+            state,
+            test_case,
+            abstract_case.profile,
+            invalid_operation=invalid_operation,
+        )
+    if abstract_case.handler_name == "bls_to_execution_change":
+        return materialize_bls_to_execution_change(
             spec,
             state,
             test_case,
@@ -224,6 +234,45 @@ def materialize_deposit(
     case_parts = operation_case_parts(pre_state, "deposit", deposit)
     try:
         with_bls_setting(profile, lambda: spec.process_deposit(state, deposit))
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
+def materialize_bls_to_execution_change(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+    *,
+    invalid_operation: bool,
+) -> TestCaseResult:
+    signed_address_change = prepare_state_for_bls_to_execution_change(spec, state, profile)
+    if invalid_operation:
+        signed_address_change.message.validator_index = spec.ValidatorIndex(len(state.validators))
+
+    pre_state = state.copy()
+    case_parts = operation_case_parts(pre_state, "address_change", signed_address_change)
+    try:
+        with_bls_setting(
+            profile,
+            lambda: spec.process_bls_to_execution_change(state, signed_address_change),
+        )
     except AssertionError:
         return TestCaseResult(
             test_case=test_case,
@@ -513,6 +562,60 @@ def prepare_state_for_deposit(spec, state, profile: dict[str, Any]):
             signed=False,
         )
     raise ValueError(f"Unsupported deposit guide intent: {intent}")
+
+
+def prepare_state_for_bls_to_execution_change(spec, state, profile: dict[str, Any]):
+    validator_index = VALIDATOR_INDEX
+    withdrawal_pubkey = pubkeys[-1 - validator_index]
+    validator = state.validators[validator_index]
+    validator.withdrawal_credentials = spec.BLS_WITHDRAWAL_PREFIX + spec.hash(withdrawal_pubkey)[1:]
+
+    intent = profile.get("guide_intent")
+    if intent in (None, "success"):
+        return get_signed_address_change(
+            spec,
+            state,
+            validator_index=validator_index,
+            withdrawal_pubkey=withdrawal_pubkey,
+            to_execution_address=SOURCE_ADDRESS,
+        )
+    if intent == "out_of_range":
+        return get_signed_address_change(
+            spec,
+            state,
+            validator_index=len(state.validators),
+            withdrawal_pubkey=withdrawal_pubkey,
+            to_execution_address=SOURCE_ADDRESS,
+        )
+    if intent == "not_bls_credentials":
+        validator.withdrawal_credentials = spec.ETH1_ADDRESS_WITHDRAWAL_PREFIX + b"\x00" * 11 + SOURCE_ADDRESS
+        return get_signed_address_change(
+            spec,
+            state,
+            validator_index=validator_index,
+            withdrawal_pubkey=withdrawal_pubkey,
+            to_execution_address=SOURCE_ADDRESS,
+        )
+    if intent == "pubkey_mismatch":
+        return get_signed_address_change(
+            spec,
+            state,
+            validator_index=validator_index,
+            withdrawal_pubkey=pubkeys[-2 - validator_index],
+            to_execution_address=SOURCE_ADDRESS,
+        )
+    if intent == "bad_signature":
+        profile["bls_setting"] = 1
+        signed_address_change = get_signed_address_change(
+            spec,
+            state,
+            validator_index=validator_index,
+            withdrawal_pubkey=withdrawal_pubkey,
+            to_execution_address=SOURCE_ADDRESS,
+        )
+        signed_address_change.signature = spec.BLSSignature(b"\x42" * 96)
+        return signed_address_change
+    raise ValueError(f"Unsupported BLS to execution change guide intent: {intent}")
 
 
 def invalid_source_address() -> bytes:
