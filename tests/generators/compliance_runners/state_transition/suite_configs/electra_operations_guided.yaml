@@ -9,6 +9,7 @@ generation:
     - deposit_request
     - withdrawal_request
     - consolidation_request
+    - pending_deposits
   per_handler_limit: 40
   guided: true
   changed_only: false

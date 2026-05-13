@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from eth_consensus_specs.test.helpers.deposits import prepare_pending_deposit
 from eth_consensus_specs.test.helpers.withdrawals import (
     set_compounding_withdrawal_credential_with_balance,
     set_eth1_withdrawal_credential_with_balance,
@@ -15,12 +16,14 @@ from tests.generators.compliance_runners.gen_base.gen_typing import (
 
 from .abstract_cases import AbstractStateTransitionCase
 
-GENERATOR_NAME = "operations"
+OPERATIONS_RUNNER_NAME = "operations"
+EPOCH_PROCESSING_RUNNER_NAME = "epoch_processing"
 SUITE_NAME = "minizinc_abstract"
 MATERIALIZED_HANDLER_NAMES = (
     "deposit_request",
     "withdrawal_request",
     "consolidation_request",
+    "pending_deposits",
 )
 VALIDATOR_INDEX = 0
 TARGET_VALIDATOR_INDEX = 1
@@ -54,7 +57,7 @@ def materialize_case(
     test_case = TestCase(
         fork_name=fork_name,
         preset_name=preset_name,
-        runner_name=GENERATOR_NAME,
+        runner_name=runner_name_for_handler(abstract_case.handler_name),
         handler_name=abstract_case.handler_name,
         suite_name=SUITE_NAME,
         case_name=abstract_case.case_name,
@@ -75,13 +78,26 @@ def materialize_case(
             abstract_case.profile,
             invalid_operation=invalid_operation,
         )
-    return materialize_consolidation_request(
+    if abstract_case.handler_name == "consolidation_request":
+        return materialize_consolidation_request(
+            spec,
+            state,
+            test_case,
+            abstract_case.profile,
+            invalid_operation=invalid_operation,
+        )
+    return materialize_pending_deposits(
         spec,
         state,
         test_case,
         abstract_case.profile,
-        invalid_operation=invalid_operation,
     )
+
+
+def runner_name_for_handler(handler_name: str) -> str:
+    if handler_name == "pending_deposits":
+        return EPOCH_PROCESSING_RUNNER_NAME
+    return OPERATIONS_RUNNER_NAME
 
 
 def materialize_deposit_request(
@@ -188,6 +204,38 @@ def materialize_consolidation_request(
     case_parts = operation_case_parts(pre_state, "consolidation_request", consolidation_request)
     try:
         spec.process_consolidation_request(state, consolidation_request)
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
+def materialize_pending_deposits(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_pending_deposits(spec, state, profile)
+
+    pre_state = state.copy()
+    case_parts = [TestCasePart(("pre", "ssz", serialize(pre_state)))]
+    try:
+        spec.process_pending_deposits(state)
     except AssertionError:
         return TestCaseResult(
             test_case=test_case,
@@ -650,6 +698,96 @@ def fill_pending_consolidations(spec, state, source_index: int, target_index: in
         state.pending_consolidations.append(
             spec.PendingConsolidation(source_index=source_index, target_index=target_index)
         )
+
+
+def prepare_state_for_pending_deposits(spec, state, profile: dict[str, Any]) -> None:
+    state.deposit_requests_start_index = state.eth1_deposit_index
+    state.deposit_balance_to_consume = spec.Gwei(0)
+    state.pending_deposits = spec.List[spec.PendingDeposit, spec.PENDING_DEPOSITS_LIMIT]()
+
+    intent = profile.get("guide_intent")
+    if intent in (None, "success_top_up"):
+        add_pending_deposit(spec, state, VALIDATOR_INDEX, spec.EFFECTIVE_BALANCE_INCREMENT)
+    elif intent == "not_finalized":
+        add_pending_deposit(
+            spec,
+            state,
+            VALIDATOR_INDEX,
+            spec.EFFECTIVE_BALANCE_INCREMENT,
+            slot=spec.Slot(1),
+        )
+        state.finalized_checkpoint.epoch = spec.GENESIS_EPOCH
+    elif intent == "churn_limit_reached":
+        add_pending_deposit(
+            spec,
+            state,
+            VALIDATOR_INDEX,
+            spec.Gwei(spec.get_activation_exit_churn_limit(state) + 1),
+        )
+    elif intent == "exited_validator_postponed":
+        add_pending_deposit(spec, state, VALIDATOR_INDEX, spec.EFFECTIVE_BALANCE_INCREMENT)
+        spec.initiate_validator_exit(state, spec.ValidatorIndex(VALIDATOR_INDEX))
+    elif intent == "withdrawable_validator":
+        add_pending_deposit(
+            spec,
+            state,
+            VALIDATOR_INDEX,
+            spec.Gwei(spec.get_activation_exit_churn_limit(state) + 1),
+        )
+        spec.initiate_validator_exit(state, spec.ValidatorIndex(VALIDATOR_INDEX))
+        state.slot = spec.compute_start_slot_at_epoch(
+            spec.Epoch(state.validators[VALIDATOR_INDEX].withdrawable_epoch + 1)
+        )
+    elif intent == "eth1_bridge_blocks_request":
+        state.deposit_requests_start_index = spec.uint64(state.eth1_deposit_index + 1)
+        add_pending_deposit(
+            spec,
+            state,
+            VALIDATOR_INDEX,
+            spec.EFFECTIVE_BALANCE_INCREMENT,
+            slot=spec.Slot(1),
+        )
+        state.finalized_checkpoint.epoch = spec.Epoch(1)
+    elif intent == "max_per_epoch_reached":
+        amount = spec.EFFECTIVE_BALANCE_INCREMENT
+        state.deposit_balance_to_consume = spec.Gwei(
+            amount * (spec.MAX_PENDING_DEPOSITS_PER_EPOCH + 1)
+        )
+        for validator_index in range(spec.MAX_PENDING_DEPOSITS_PER_EPOCH + 1):
+            add_pending_deposit(spec, state, validator_index, amount)
+    elif intent == "new_validator":
+        add_pending_deposit(
+            spec,
+            state,
+            len(state.validators),
+            spec.EFFECTIVE_BALANCE_INCREMENT,
+            withdrawal_credentials=DEPOSIT_WITHDRAWAL_CREDENTIALS,
+        )
+    else:
+        raise ValueError(f"Unsupported pending deposits guide intent: {intent}")
+
+
+def add_pending_deposit(
+    spec,
+    state,
+    validator_index: int,
+    amount,
+    *,
+    slot=None,
+    withdrawal_credentials=None,
+) -> None:
+    if withdrawal_credentials is None:
+        withdrawal_credentials = state.validators[validator_index].withdrawal_credentials
+    state.pending_deposits.append(
+        prepare_pending_deposit(
+            spec,
+            validator_index=validator_index,
+            amount=amount,
+            withdrawal_credentials=withdrawal_credentials,
+            signed=True,
+            slot=slot,
+        )
+    )
 
 
 def profile_epoch(spec, current_epoch, relation: str):

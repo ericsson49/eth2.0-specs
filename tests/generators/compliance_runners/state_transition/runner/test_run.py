@@ -41,9 +41,15 @@ def get_test_case(spec, test_dir: Path, handler: str):
     return {
         "meta": read_yaml(test_dir / "meta.yaml"),
         "pre": decode_file(spec, test_dir, "pre", spec.BeaconState),
-        "operation": decode_operation(spec, test_dir, handler),
+        "operation": decode_optional_operation(spec, test_dir, handler),
         "post": decode_optional_post(spec, test_dir),
     }
+
+
+def decode_optional_operation(spec, test_dir: Path, handler: str):
+    if not (test_dir / f"{handler}.ssz_snappy").exists():
+        return None
+    return decode_operation(spec, test_dir, handler)
 
 
 def decode_operation(spec, test_dir: Path, handler: str):
@@ -67,12 +73,16 @@ def run_test(test_info: StateTransitionTestInfo):
     preset, fork, runner, handler, _, test_dir = test_info
     spec = spec_targets[preset][fork]
 
-    if runner != "operations":
-        raise ValueError(f"Unsupported state-transition runner: {runner}")
-
     test_case = get_test_case(spec, Path(test_dir), handler)
     state = test_case["pre"]
     expected_post = test_case["post"]
+
+    if runner == "epoch_processing":
+        run_epoch_processing_case(spec, state, handler, expected_post)
+        return
+
+    if runner != "operations":
+        raise ValueError(f"Unsupported state-transition runner: {runner}")
 
     if handler == "deposit_request":
         run_deposit_request_case(spec, state, test_case["operation"], expected_post)
@@ -85,6 +95,17 @@ def run_test(test_info: StateTransitionTestInfo):
         return
 
     raise ValueError(f"Unsupported operations handler: {handler}")
+
+
+def run_epoch_processing_case(spec, state, handler, expected_post):
+    if handler != "pending_deposits":
+        raise ValueError(f"Unsupported epoch_processing handler: {handler}")
+    if expected_post is None:
+        expect_assertion_error(lambda: spec.process_pending_deposits(state))
+        return
+
+    spec.process_pending_deposits(state)
+    assert state == expected_post
 
 
 def run_deposit_request_case(spec, state, deposit_request, expected_post):

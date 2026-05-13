@@ -53,7 +53,7 @@ def main() -> None:
         action="append",
         help=(
             "Handler to generate. Defaults to withdrawal_request. Can be repeated. "
-            "Use 'all' for every materialized operation handler."
+            "Use 'all' for every materialized state-transition handler."
         ),
     )
     parser.add_argument("--keep-existing", action="store_true")

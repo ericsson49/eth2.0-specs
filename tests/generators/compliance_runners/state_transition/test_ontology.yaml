@@ -10,6 +10,10 @@ targets:
       functions:
         - is_valid_switch_to_compounding_request
         - process_consolidation_request
+  epoch_processing:
+    pending_deposits:
+      functions:
+        - process_pending_deposits
 
 intents:
   operations:
@@ -79,4 +83,23 @@ intents:
       source_pending_withdrawal:
         outcome: no_change
       success:
+        outcome: changed
+
+  epoch_processing:
+    pending_deposits:
+      success_top_up:
+        outcome: changed
+      not_finalized:
+        outcome: no_change
+      churn_limit_reached:
+        outcome: changed
+      exited_validator_postponed:
+        outcome: no_change
+      withdrawable_validator:
+        outcome: changed
+      eth1_bridge_blocks_request:
+        outcome: no_change
+      max_per_epoch_reached:
+        outcome: changed
+      new_validator:
         outcome: changed

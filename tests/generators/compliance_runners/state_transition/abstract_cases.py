@@ -26,6 +26,7 @@ HANDLER_NAMES = (
     "deposit_request",
     "withdrawal_request",
     "consolidation_request",
+    "pending_deposits",
     "registry_updates",
 )
 
@@ -148,6 +149,8 @@ def is_materializable_for_handler(profile: dict[str, Any], handler_name: str) ->
         return profile["withdrawal_credential_type"] in ("ETH1", "COMP")
     if handler_name == "consolidation_request":
         return profile["withdrawal_credential_type"] in ("ETH1", "COMP")
+    if handler_name == "pending_deposits":
+        return True
     if handler_name == "registry_updates":
         return classify_handler(profile) == "registry_updates"
     raise ValueError(f"Unknown handler: {handler_name}")
