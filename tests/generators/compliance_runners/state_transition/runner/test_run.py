@@ -55,6 +55,8 @@ def decode_optional_operation(spec, test_dir: Path, handler: str):
 def decode_operation(spec, test_dir: Path, handler: str):
     if handler == "deposit_request":
         return decode_file(spec, test_dir, "deposit_request", spec.DepositRequest)
+    if handler == "voluntary_exit":
+        return decode_file(spec, test_dir, "voluntary_exit", spec.SignedVoluntaryExit)
     if handler == "withdrawal_request":
         return decode_file(spec, test_dir, "withdrawal_request", spec.WithdrawalRequest)
     if handler == "consolidation_request":
@@ -86,6 +88,9 @@ def run_test(test_info: StateTransitionTestInfo):
 
     if handler == "deposit_request":
         run_deposit_request_case(spec, state, test_case["operation"], expected_post)
+        return
+    if handler == "voluntary_exit":
+        run_voluntary_exit_case(spec, state, test_case["operation"], expected_post)
         return
     if handler == "withdrawal_request":
         run_withdrawal_request_case(spec, state, test_case["operation"], expected_post)
@@ -120,6 +125,15 @@ def run_deposit_request_case(spec, state, deposit_request, expected_post):
         return
 
     spec.process_deposit_request(state, deposit_request)
+    assert state == expected_post
+
+
+def run_voluntary_exit_case(spec, state, signed_voluntary_exit, expected_post):
+    if expected_post is None:
+        expect_assertion_error(lambda: spec.process_voluntary_exit(state, signed_voluntary_exit))
+        return
+
+    spec.process_voluntary_exit(state, signed_voluntary_exit)
     assert state == expected_post
 
 

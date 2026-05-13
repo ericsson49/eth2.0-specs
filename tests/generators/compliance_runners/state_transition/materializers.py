@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from eth_consensus_specs.test.helpers.deposits import prepare_pending_deposit
+from eth_consensus_specs.test.helpers.keys import privkeys
+from eth_consensus_specs.test.helpers.voluntary_exits import sign_voluntary_exit
 from eth_consensus_specs.test.helpers.withdrawals import (
     set_compounding_withdrawal_credential_with_balance,
     set_eth1_withdrawal_credential_with_balance,
@@ -21,6 +23,7 @@ EPOCH_PROCESSING_RUNNER_NAME = "epoch_processing"
 SUITE_NAME = "minizinc_abstract"
 MATERIALIZED_HANDLER_NAMES = (
     "deposit_request",
+    "voluntary_exit",
     "withdrawal_request",
     "consolidation_request",
     "pending_deposits",
@@ -66,6 +69,14 @@ def materialize_case(
     )
     if abstract_case.handler_name == "deposit_request":
         return materialize_deposit_request(
+            spec,
+            state,
+            test_case,
+            abstract_case.profile,
+            invalid_operation=invalid_operation,
+        )
+    if abstract_case.handler_name == "voluntary_exit":
+        return materialize_voluntary_exit(
             spec,
             state,
             test_case,
@@ -201,6 +212,44 @@ def materialize_deposit_request(
     case_parts = operation_case_parts(pre_state, "deposit_request", deposit_request)
     try:
         spec.process_deposit_request(state, deposit_request)
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
+def materialize_voluntary_exit(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+    *,
+    invalid_operation: bool,
+) -> TestCaseResult:
+    validator_index = VALIDATOR_INDEX
+    prepare_state_for_voluntary_exit(spec, state, validator_index, profile)
+    signed_voluntary_exit = build_signed_voluntary_exit(spec, state, validator_index, profile)
+    if invalid_operation:
+        signed_voluntary_exit.signature = b"\xff" * 96
+
+    pre_state = state.copy()
+    case_parts = operation_case_parts(pre_state, "voluntary_exit", signed_voluntary_exit)
+    try:
+        spec.process_voluntary_exit(state, signed_voluntary_exit)
     except AssertionError:
         return TestCaseResult(
             test_case=test_case,
@@ -395,6 +444,68 @@ def build_deposit_request(spec, profile: dict[str, Any]):
         signature=DEPOSIT_SIGNATURE,
         index=index,
     )
+
+
+def prepare_state_for_voluntary_exit(
+    spec,
+    state,
+    validator_index: int,
+    profile: dict[str, Any],
+) -> None:
+    current_epoch = spec.Epoch(max(2, spec.config.SHARD_COMMITTEE_PERIOD + 1))
+    state.slot = spec.compute_start_slot_at_epoch(current_epoch)
+    state.pending_partial_withdrawals = spec.List[
+        spec.PendingPartialWithdrawal, spec.PENDING_PARTIAL_WITHDRAWALS_LIMIT
+    ]()
+
+    validator = state.validators[validator_index]
+    validator.slashed = False
+    validator.activation_eligibility_epoch = spec.Epoch(0)
+    validator.activation_epoch = spec.Epoch(0)
+    validator.exit_epoch = spec.FAR_FUTURE_EPOCH
+    validator.withdrawable_epoch = spec.FAR_FUTURE_EPOCH
+    set_eth1_withdrawal_credential_with_balance(
+        spec,
+        state,
+        validator_index,
+        effective_balance=spec.MIN_ACTIVATION_BALANCE,
+        balance=spec.MIN_ACTIVATION_BALANCE,
+        address=SOURCE_ADDRESS,
+    )
+
+    intent = profile.get("guide_intent")
+    if intent in (None, "success", "future_epoch"):
+        return
+    if intent == "inactive":
+        validator.activation_epoch = spec.FAR_FUTURE_EPOCH
+    elif intent == "already_exited":
+        validator.exit_epoch = spec.Epoch(current_epoch + 1)
+    elif intent == "not_active_long_enough":
+        validator.activation_epoch = current_epoch
+    elif intent == "pending_withdrawal":
+        state.pending_partial_withdrawals.append(
+            spec.PendingPartialWithdrawal(
+                validator_index=validator_index,
+                amount=spec.Gwei(1),
+                withdrawable_epoch=spec.Epoch(current_epoch + 1),
+            )
+        )
+    else:
+        raise ValueError(f"Unsupported voluntary exit guide intent: {intent}")
+
+
+def build_signed_voluntary_exit(spec, state, validator_index: int, profile: dict[str, Any]):
+    current_epoch = spec.get_current_epoch(state)
+    voluntary_exit_epoch = current_epoch
+    if profile.get("guide_intent") == "future_epoch":
+        voluntary_exit_epoch = spec.Epoch(current_epoch + 1)
+
+    voluntary_exit = spec.VoluntaryExit(
+        epoch=voluntary_exit_epoch,
+        validator_index=validator_index,
+    )
+    privkey = privkeys[validator_index]
+    return sign_voluntary_exit(spec, state, voluntary_exit, privkey)
 
 
 def prepare_state_for_profile(spec, state, validator_index: int, profile: dict[str, Any]) -> None:

@@ -3,6 +3,9 @@ targets:
     deposit_request:
       functions:
         - process_deposit_request
+    voluntary_exit:
+      functions:
+        - process_voluntary_exit
     withdrawal_request:
       functions:
         - process_withdrawal_request
@@ -28,6 +31,20 @@ intents:
         outcome: changed
       start_index_set:
         outcome: changed
+
+    voluntary_exit:
+      success:
+        outcome: changed
+      inactive:
+        outcome: assertion_failure
+      already_exited:
+        outcome: assertion_failure
+      future_epoch:
+        outcome: assertion_failure
+      not_active_long_enough:
+        outcome: assertion_failure
+      pending_withdrawal:
+        outcome: assertion_failure
 
     withdrawal_request:
       queue_full:
