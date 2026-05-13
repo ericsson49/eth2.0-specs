@@ -611,6 +611,7 @@ For reproducible suite generation, use a checked-in suite config:
 ```bash
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage --summary
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --check-reproducible
 ```
 
 The default guided Electra operations profile lives in
@@ -630,3 +631,8 @@ uv run --extra test python -m tests.generators.compliance_runners.state_transiti
 It reports generated handlers, intents per handler, missing ontology intents,
 observed outcome counts, semantic outcome mismatches, and target coverage totals
 when a coverage directory is provided.
+
+The reproducibility check generates the same suite config twice into fresh
+temporary directories and compares all emitted files byte-for-byte. Use
+`--keep-reproducibility-temp` to preserve those directories when debugging a
+difference.

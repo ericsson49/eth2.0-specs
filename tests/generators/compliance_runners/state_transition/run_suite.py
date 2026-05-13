@@ -7,14 +7,12 @@ import sys
 from pathlib import Path
 
 import pytest
-from ruamel.yaml import YAML
 
+from .check_reproducible import check_suite_reproducible
 from .generate_vectors import generate_vectors
+from .suite_config import read_yaml, resolve_suite_config_path
 from .summarize_suite import summarize_suite
 
-DEFAULT_SUITE_CONFIG_DIR = Path(
-    "tests/generators/compliance_runners/state_transition/suite_configs"
-)
 RUNNER_TEST = Path("tests/generators/compliance_runners/state_transition/runner/test_run.py")
 
 
@@ -66,6 +64,16 @@ def main() -> None:
         type=Path,
         help="Optional file to write the suite health summary to.",
     )
+    parser.add_argument(
+        "--check-reproducible",
+        action="store_true",
+        help="Generate the suite twice in temporary directories and compare outputs.",
+    )
+    parser.add_argument(
+        "--keep-reproducibility-temp",
+        action="store_true",
+        help="Keep reproducibility comparison directories for inspection.",
+    )
     args = parser.parse_args()
 
     suite_config_path = resolve_suite_config_path(args.suite)
@@ -99,20 +107,14 @@ def main() -> None:
             args.summary_output.parent.mkdir(parents=True, exist_ok=True)
             args.summary_output.write_text(summary)
 
-
-def resolve_suite_config_path(suite: str) -> Path:
-    suite_path = Path(suite)
-    if suite_path.exists():
-        return suite_path
-    candidate = DEFAULT_SUITE_CONFIG_DIR / f"{suite}.yaml"
-    if candidate.exists():
-        return candidate
-    raise FileNotFoundError(f"Unknown suite config: {suite}")
-
-
-def read_yaml(path: Path):
-    yaml = YAML(typ="safe")
-    return yaml.load(path.read_text())
+    if args.check_reproducible:
+        result = check_suite_reproducible(
+            str(suite_config_path),
+            keep_temp=args.keep_reproducibility_temp,
+        )
+        print(result.format())
+        if not result.reproducible:
+            raise SystemExit(1)
 
 
 def generate_from_config(generation_config: dict, output_dir: Path) -> None:
