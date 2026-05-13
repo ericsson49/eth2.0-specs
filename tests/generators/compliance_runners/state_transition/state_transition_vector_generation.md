@@ -573,3 +573,18 @@ The generated vectors can be checked against the pyspec with:
 ```bash
 uv run --extra test pytest tests/generators/compliance_runners/state_transition/runner/test_run.py --test-dir /tmp/state-transition-vectors
 ```
+
+Coverage evaluation can run the same vectors under `coverage.py` and write
+compact text, full missing-line text, function summary, target-coverage
+summary, semantic-coverage summary, JSON, HTML, and annotated-source reports:
+
+```bash
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.measure_coverage --test-dir /tmp/state-transition-vectors --output /tmp/state-transition-coverage
+```
+
+By default, the command infers the pyspec source files to report from generated
+`manifest.yaml` files. Use `--source-file` one or more times to override the
+focused report targets. It also infers target functions, guide intents, and
+expected outcomes from `test_ontology.yaml`, then writes `target_coverage.txt`
+and `semantic_coverage.txt`. Use `--ontology` to provide an explicit ontology
+YAML.
