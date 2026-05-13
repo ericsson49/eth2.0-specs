@@ -18,6 +18,7 @@ from .abstract_cases import AbstractStateTransitionCase
 GENERATOR_NAME = "operations"
 SUITE_NAME = "minizinc_abstract"
 MATERIALIZED_HANDLER_NAMES = (
+    "deposit_request",
     "withdrawal_request",
     "consolidation_request",
 )
@@ -25,6 +26,9 @@ VALIDATOR_INDEX = 0
 TARGET_VALIDATOR_INDEX = 1
 SOURCE_ADDRESS = b"\x22" * 20
 TARGET_ADDRESS = b"\x33" * 20
+DEPOSIT_PUBKEY = b"\x44" * 48
+DEPOSIT_WITHDRAWAL_CREDENTIALS = b"\x01" + b"\x00" * 11 + b"\x55" * 20
+DEPOSIT_SIGNATURE = b"\x66" * 96
 
 
 class UnsupportedProfileError(ValueError):
@@ -38,6 +42,7 @@ def materialize_case(
     *,
     fork_name: str,
     preset_name: str,
+    invalid_operation: bool = False,
 ) -> TestCaseResult:
     if abstract_case.handler_name not in MATERIALIZED_HANDLER_NAMES:
         raise UnsupportedProfileError(
@@ -52,9 +57,66 @@ def materialize_case(
         suite_name=SUITE_NAME,
         case_name=abstract_case.case_name,
     )
+    if abstract_case.handler_name == "deposit_request":
+        return materialize_deposit_request(
+            spec,
+            state,
+            test_case,
+            abstract_case.profile,
+            invalid_operation=invalid_operation,
+        )
     if abstract_case.handler_name == "withdrawal_request":
-        return materialize_withdrawal_request(spec, state, test_case, abstract_case.profile)
-    return materialize_consolidation_request(spec, state, test_case, abstract_case.profile)
+        return materialize_withdrawal_request(
+            spec,
+            state,
+            test_case,
+            abstract_case.profile,
+            invalid_operation=invalid_operation,
+        )
+    return materialize_consolidation_request(
+        spec,
+        state,
+        test_case,
+        abstract_case.profile,
+        invalid_operation=invalid_operation,
+    )
+
+
+def materialize_deposit_request(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+    *,
+    invalid_operation: bool,
+) -> TestCaseResult:
+    prepare_state_for_deposit_request(spec, state, profile)
+    deposit_request = build_deposit_request(spec, profile)
+    if invalid_operation:
+        deposit_request.amount = spec.Gwei(0)
+
+    pre_state = state.copy()
+    case_parts = operation_case_parts(pre_state, "deposit_request", deposit_request)
+    try:
+        spec.process_deposit_request(state, deposit_request)
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
 
 
 def materialize_withdrawal_request(
@@ -62,24 +124,37 @@ def materialize_withdrawal_request(
     state,
     test_case: TestCase,
     profile: dict[str, Any],
+    *,
+    invalid_operation: bool,
 ) -> TestCaseResult:
     validator_index = VALIDATOR_INDEX
     prepare_state_for_profile(spec, state, validator_index, profile)
     withdrawal_request = build_withdrawal_request(spec, state, validator_index, profile)
+    if invalid_operation:
+        withdrawal_request.source_address = invalid_source_address()
 
     pre_state = state.copy()
-    spec.process_withdrawal_request(state, withdrawal_request)
+    case_parts = operation_case_parts(pre_state, "withdrawal_request", withdrawal_request)
+    try:
+        spec.process_withdrawal_request(state, withdrawal_request)
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
 
-    meta = {
-        "description": "MiniZinc-generated abstract validator-state profile",
-        "profile": profile,
-    }
-    case_parts = [
-        TestCasePart(("pre", "ssz", serialize(pre_state))),
-        TestCasePart(("withdrawal_request", "ssz", serialize(withdrawal_request))),
-        TestCasePart(("post", "ssz", serialize(state))),
-    ]
-    return TestCaseResult(test_case=test_case, meta=meta, case_parts=case_parts)
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
 
 
 def materialize_consolidation_request(
@@ -87,26 +162,92 @@ def materialize_consolidation_request(
     state,
     test_case: TestCase,
     profile: dict[str, Any],
+    *,
+    invalid_operation: bool,
 ) -> TestCaseResult:
     source_index = VALIDATOR_INDEX
     target_index = TARGET_VALIDATOR_INDEX
     prepare_state_for_profile(spec, state, source_index, profile)
     prepare_target_for_consolidation(spec, state, target_index)
     consolidation_request = build_consolidation_request(spec, state, source_index, target_index)
+    if invalid_operation:
+        consolidation_request.source_address = invalid_source_address()
 
     pre_state = state.copy()
-    spec.process_consolidation_request(state, consolidation_request)
+    case_parts = operation_case_parts(pre_state, "consolidation_request", consolidation_request)
+    try:
+        spec.process_consolidation_request(state, consolidation_request)
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
 
-    meta = {
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
+def operation_case_parts(pre_state, operation_name: str, operation) -> list[TestCasePart]:
+    return [
+        TestCasePart(("pre", "ssz", serialize(pre_state))),
+        TestCasePart((operation_name, "ssz", serialize(operation))),
+    ]
+
+
+def operation_meta(
+    profile: dict[str, Any],
+    *,
+    operation_valid: bool,
+    post_state_changed: bool | None,
+) -> dict[str, Any]:
+    return {
         "description": "MiniZinc-generated abstract validator-state profile",
         "profile": profile,
+        "operation_valid": operation_valid,
+        "post_state_changed": post_state_changed,
     }
-    case_parts = [
-        TestCasePart(("pre", "ssz", serialize(pre_state))),
-        TestCasePart(("consolidation_request", "ssz", serialize(consolidation_request))),
-        TestCasePart(("post", "ssz", serialize(state))),
-    ]
-    return TestCaseResult(test_case=test_case, meta=meta, case_parts=case_parts)
+
+
+def invalid_source_address() -> bytes:
+    return b"\xff" * 20
+
+
+def prepare_state_for_deposit_request(spec, state, profile: dict[str, Any]) -> None:
+    state.pending_deposits = spec.List[spec.PendingDeposit, spec.PENDING_DEPOSITS_LIMIT]()
+    if profile["activation_eligibility_epoch_set"]:
+        state.deposit_requests_start_index = spec.uint64(0)
+    else:
+        state.deposit_requests_start_index = spec.UNSET_DEPOSIT_REQUESTS_START_INDEX
+
+
+def build_deposit_request(spec, profile: dict[str, Any]):
+    amount = spec.MIN_ACTIVATION_BALANCE
+    if profile["effective_balance_to_min_activation_balance"] == "<":
+        amount = spec.Gwei(max(1, int(spec.MIN_ACTIVATION_BALANCE) - int(spec.EFFECTIVE_BALANCE_INCREMENT)))
+    elif profile["effective_balance_to_max_effective_balance"] == "=":
+        amount = spec.MAX_EFFECTIVE_BALANCE_ELECTRA
+
+    index = spec.uint64(0)
+    if profile["activation_eligibility_epoch_set"]:
+        index = spec.uint64(1)
+
+    return spec.DepositRequest(
+        pubkey=DEPOSIT_PUBKEY,
+        withdrawal_credentials=DEPOSIT_WITHDRAWAL_CREDENTIALS,
+        amount=amount,
+        signature=DEPOSIT_SIGNATURE,
+        index=index,
+    )
 
 
 def prepare_state_for_profile(spec, state, validator_index: int, profile: dict[str, Any]) -> None:

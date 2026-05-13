@@ -21,6 +21,7 @@ class AbstractStateTransitionCase:
 
 
 HANDLER_NAMES = (
+    "deposit_request",
     "withdrawal_request",
     "consolidation_request",
     "registry_updates",
@@ -100,6 +101,8 @@ def enumerate_materializable_operation_cases(
 
 
 def is_materializable_for_handler(profile: dict[str, Any], handler_name: str) -> bool:
+    if handler_name == "deposit_request":
+        return True
     if handler_name == "withdrawal_request":
         return profile["withdrawal_credential_type"] in ("ETH1", "COMP")
     if handler_name == "consolidation_request":
@@ -122,6 +125,8 @@ def make_abstract_case(
 
 
 def classify_handler(profile: dict[str, Any]) -> str:
+    if profile["withdrawal_credential_type"] == "BLS":
+        return "deposit_request"
     if profile["has_pending_consolidation_request"]:
         return "consolidation_request"
     if profile["has_pending_withdrawal_request"]:

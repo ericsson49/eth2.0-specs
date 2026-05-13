@@ -527,15 +527,28 @@ is to materialize these profiles into concrete `pre`, operation input, and
 
 The first materializers support:
 
+- `operations/deposit_request`
 - `operations/withdrawal_request`
 - `operations/consolidation_request`
 
 ```bash
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5 --changed-only
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5 --unchanged-only
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5 --invalid-only
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --handler consolidation_request --per-handler-limit 5 --changed-only
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --handler all --per-handler-limit 5 --changed-only
 ```
+
+The generator records `operation_valid` and `post_state_changed` in `meta.yaml`.
+When a `process_*` function raises an assertion, the vector is negative and
+omits `post.ssz_snappy`. For `deposit_request`, `withdrawal_request`, and
+`consolidation_request`, many invalid preconditions are specified as ignored
+requests or append-only behavior rather than assertions, so those cases are
+emitted as valid vectors. Ignored requests have `post.ssz_snappy` equal to
+`pre.ssz_snappy`. As a result, `--invalid-only` may emit no vectors for these
+handlers until a materialized operation targets a `process_*` function with
+assertion failures.
 
 It writes standard compliance-style operation cases:
 
