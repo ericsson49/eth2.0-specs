@@ -531,6 +531,7 @@ The first materializers support:
 - `operations/withdrawal_request`
 - `operations/consolidation_request`
 - `epoch_processing/pending_deposits`
+- `epoch_processing/pending_consolidations`
 
 ```bash
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5

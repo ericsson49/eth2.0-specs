@@ -98,13 +98,17 @@ def run_test(test_info: StateTransitionTestInfo):
 
 
 def run_epoch_processing_case(spec, state, handler, expected_post):
-    if handler != "pending_deposits":
+    if handler == "pending_deposits":
+        process_fn = spec.process_pending_deposits
+    elif handler == "pending_consolidations":
+        process_fn = spec.process_pending_consolidations
+    else:
         raise ValueError(f"Unsupported epoch_processing handler: {handler}")
     if expected_post is None:
-        expect_assertion_error(lambda: spec.process_pending_deposits(state))
+        expect_assertion_error(lambda: process_fn(state))
         return
 
-    spec.process_pending_deposits(state)
+    process_fn(state)
     assert state == expected_post
 
 

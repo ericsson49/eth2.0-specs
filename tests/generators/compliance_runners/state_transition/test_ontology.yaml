@@ -14,6 +14,9 @@ targets:
     pending_deposits:
       functions:
         - process_pending_deposits
+    pending_consolidations:
+      functions:
+        - process_pending_consolidations
 
 intents:
   operations:
@@ -102,4 +105,19 @@ intents:
       max_per_epoch_reached:
         outcome: changed
       new_validator:
+        outcome: changed
+    pending_consolidations:
+      empty_queue:
+        outcome: no_change
+      success:
+        outcome: changed
+      not_withdrawable:
+        outcome: no_change
+      slashed_source_skipped:
+        outcome: changed
+      source_balance_less_than_effective_balance:
+        outcome: changed
+      source_balance_greater_than_effective_balance:
+        outcome: changed
+      blocked_after_processed:
         outcome: changed

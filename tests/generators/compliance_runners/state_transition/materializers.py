@@ -24,6 +24,7 @@ MATERIALIZED_HANDLER_NAMES = (
     "withdrawal_request",
     "consolidation_request",
     "pending_deposits",
+    "pending_consolidations",
 )
 VALIDATOR_INDEX = 0
 TARGET_VALIDATOR_INDEX = 1
@@ -86,7 +87,14 @@ def materialize_case(
             abstract_case.profile,
             invalid_operation=invalid_operation,
         )
-    return materialize_pending_deposits(
+    if abstract_case.handler_name == "pending_deposits":
+        return materialize_pending_deposits(
+            spec,
+            state,
+            test_case,
+            abstract_case.profile,
+        )
+    return materialize_pending_consolidations(
         spec,
         state,
         test_case,
@@ -94,8 +102,40 @@ def materialize_case(
     )
 
 
+def materialize_pending_consolidations(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_pending_consolidations(spec, state, profile)
+
+    pre_state = state.copy()
+    case_parts = [TestCasePart(("pre", "ssz", serialize(pre_state)))]
+    try:
+        spec.process_pending_consolidations(state)
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
 def runner_name_for_handler(handler_name: str) -> str:
-    if handler_name == "pending_deposits":
+    if handler_name in ("pending_deposits", "pending_consolidations"):
         return EPOCH_PROCESSING_RUNNER_NAME
     return OPERATIONS_RUNNER_NAME
 
@@ -787,6 +827,88 @@ def add_pending_deposit(
             signed=True,
             slot=slot,
         )
+    )
+
+
+def prepare_state_for_pending_consolidations(spec, state, profile: dict[str, Any]) -> None:
+    state.pending_consolidations = spec.List[
+        spec.PendingConsolidation, spec.PENDING_CONSOLIDATIONS_LIMIT
+    ]()
+    state.pending_deposits = spec.List[spec.PendingDeposit, spec.PENDING_DEPOSITS_LIMIT]()
+    prepare_pending_consolidation_pair(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+
+    intent = profile.get("guide_intent")
+    if intent == "empty_queue":
+        return
+    if intent in (None, "success"):
+        add_pending_consolidation(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+    elif intent == "not_withdrawable":
+        add_pending_consolidation(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+        state.validators[VALIDATOR_INDEX].withdrawable_epoch = spec.Epoch(
+            spec.get_current_epoch(state) + 2
+        )
+    elif intent == "slashed_source_skipped":
+        prepare_pending_consolidation_pair(spec, state, HELPER_VALIDATOR_INDEX, 3)
+        add_pending_consolidation(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+        add_pending_consolidation(spec, state, HELPER_VALIDATOR_INDEX, 3)
+        state.validators[VALIDATOR_INDEX].slashed = True
+    elif intent == "source_balance_less_than_effective_balance":
+        add_pending_consolidation(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+        state.balances[VALIDATOR_INDEX] = spec.Gwei(
+            state.validators[VALIDATOR_INDEX].effective_balance
+            - spec.EFFECTIVE_BALANCE_INCREMENT // 8
+        )
+    elif intent == "source_balance_greater_than_effective_balance":
+        add_pending_consolidation(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+        state.balances[VALIDATOR_INDEX] = spec.Gwei(
+            state.validators[VALIDATOR_INDEX].effective_balance
+            + spec.EFFECTIVE_BALANCE_INCREMENT // 8
+        )
+    elif intent == "blocked_after_processed":
+        prepare_pending_consolidation_pair(spec, state, HELPER_VALIDATOR_INDEX, 3)
+        add_pending_consolidation(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+        add_pending_consolidation(spec, state, HELPER_VALIDATOR_INDEX, 3)
+        state.validators[HELPER_VALIDATOR_INDEX].withdrawable_epoch = spec.Epoch(
+            spec.get_current_epoch(state) + 2
+        )
+    else:
+        raise ValueError(f"Unsupported pending consolidations guide intent: {intent}")
+
+
+def prepare_pending_consolidation_pair(spec, state, source_index: int, target_index: int) -> None:
+    current_epoch = spec.get_current_epoch(state)
+    source = state.validators[source_index]
+    target = state.validators[target_index]
+    source.slashed = False
+    source.activation_eligibility_epoch = spec.Epoch(0)
+    source.activation_epoch = spec.Epoch(0)
+    target.activation_eligibility_epoch = spec.Epoch(0)
+    target.activation_epoch = spec.Epoch(0)
+    target.exit_epoch = spec.FAR_FUTURE_EPOCH
+    target.withdrawable_epoch = spec.FAR_FUTURE_EPOCH
+    set_compounding_withdrawal_credential_with_balance(
+        spec,
+        state,
+        source_index,
+        effective_balance=spec.MIN_ACTIVATION_BALANCE,
+        balance=spec.MIN_ACTIVATION_BALANCE,
+        address=SOURCE_ADDRESS,
+    )
+    set_compounding_withdrawal_credential_with_balance(
+        spec,
+        state,
+        target_index,
+        effective_balance=spec.MIN_ACTIVATION_BALANCE,
+        balance=spec.MIN_ACTIVATION_BALANCE,
+        address=TARGET_ADDRESS,
+    )
+    source.exit_epoch = spec.Epoch(0)
+    source.withdrawable_epoch = current_epoch
+
+
+def add_pending_consolidation(spec, state, source_index: int, target_index: int) -> None:
+    state.pending_consolidations.append(
+        spec.PendingConsolidation(source_index=source_index, target_index=target_index)
     )
 
 
