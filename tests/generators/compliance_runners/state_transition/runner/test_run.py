@@ -102,6 +102,8 @@ def run_epoch_processing_case(spec, state, handler, expected_post):
         process_fn = spec.process_pending_deposits
     elif handler == "pending_consolidations":
         process_fn = spec.process_pending_consolidations
+    elif handler == "effective_balance_updates":
+        process_fn = spec.process_effective_balance_updates
     else:
         raise ValueError(f"Unsupported epoch_processing handler: {handler}")
     if expected_post is None:

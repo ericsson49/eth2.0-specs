@@ -25,6 +25,7 @@ MATERIALIZED_HANDLER_NAMES = (
     "consolidation_request",
     "pending_deposits",
     "pending_consolidations",
+    "effective_balance_updates",
 )
 VALIDATOR_INDEX = 0
 TARGET_VALIDATOR_INDEX = 1
@@ -94,7 +95,14 @@ def materialize_case(
             test_case,
             abstract_case.profile,
         )
-    return materialize_pending_consolidations(
+    if abstract_case.handler_name == "pending_consolidations":
+        return materialize_pending_consolidations(
+            spec,
+            state,
+            test_case,
+            abstract_case.profile,
+        )
+    return materialize_effective_balance_updates(
         spec,
         state,
         test_case,
@@ -134,8 +142,44 @@ def materialize_pending_consolidations(
     )
 
 
+def materialize_effective_balance_updates(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_effective_balance_updates(spec, state, profile)
+
+    pre_state = state.copy()
+    case_parts = [TestCasePart(("pre", "ssz", serialize(pre_state)))]
+    try:
+        spec.process_effective_balance_updates(state)
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
 def runner_name_for_handler(handler_name: str) -> str:
-    if handler_name in ("pending_deposits", "pending_consolidations"):
+    if handler_name in (
+        "pending_deposits",
+        "pending_consolidations",
+        "effective_balance_updates",
+    ):
         return EPOCH_PROCESSING_RUNNER_NAME
     return OPERATIONS_RUNNER_NAME
 
@@ -910,6 +954,61 @@ def add_pending_consolidation(spec, state, source_index: int, target_index: int)
     state.pending_consolidations.append(
         spec.PendingConsolidation(source_index=source_index, target_index=target_index)
     )
+
+
+def prepare_state_for_effective_balance_updates(spec, state, profile: dict[str, Any]) -> None:
+    index = VALIDATOR_INDEX
+    validator = state.validators[index]
+    validator.slashed = False
+    validator.activation_eligibility_epoch = spec.Epoch(0)
+    validator.activation_epoch = spec.Epoch(0)
+    validator.exit_epoch = spec.FAR_FUTURE_EPOCH
+    validator.withdrawable_epoch = spec.FAR_FUTURE_EPOCH
+
+    increment = spec.EFFECTIVE_BALANCE_INCREMENT
+    hysteresis_increment = increment // spec.HYSTERESIS_QUOTIENT
+    downward_threshold = hysteresis_increment * spec.HYSTERESIS_DOWNWARD_MULTIPLIER
+    upward_threshold = hysteresis_increment * spec.HYSTERESIS_UPWARD_MULTIPLIER
+    intent = profile.get("guide_intent")
+
+    if intent in (None, "no_change_at_threshold"):
+        set_eth1_withdrawal_credential_with_balance(
+            spec,
+            state,
+            index,
+            effective_balance=spec.MIN_ACTIVATION_BALANCE,
+            balance=spec.Gwei(spec.MIN_ACTIVATION_BALANCE + upward_threshold),
+            address=SOURCE_ADDRESS,
+        )
+    elif intent == "step_down":
+        set_eth1_withdrawal_credential_with_balance(
+            spec,
+            state,
+            index,
+            effective_balance=spec.MIN_ACTIVATION_BALANCE,
+            balance=spec.Gwei(spec.MIN_ACTIVATION_BALANCE - downward_threshold - 1),
+            address=SOURCE_ADDRESS,
+        )
+    elif intent == "step_up":
+        set_compounding_withdrawal_credential_with_balance(
+            spec,
+            state,
+            index,
+            effective_balance=spec.MIN_ACTIVATION_BALANCE,
+            balance=spec.Gwei(spec.MIN_ACTIVATION_BALANCE + upward_threshold + 1),
+            address=SOURCE_ADDRESS,
+        )
+    elif intent == "cap_at_max":
+        set_compounding_withdrawal_credential_with_balance(
+            spec,
+            state,
+            index,
+            effective_balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA - increment,
+            balance=spec.Gwei(spec.MAX_EFFECTIVE_BALANCE_ELECTRA + increment),
+            address=SOURCE_ADDRESS,
+        )
+    else:
+        raise ValueError(f"Unsupported effective balance updates guide intent: {intent}")
 
 
 def profile_epoch(spec, current_epoch, relation: str):

@@ -17,6 +17,9 @@ targets:
     pending_consolidations:
       functions:
         - process_pending_consolidations
+    effective_balance_updates:
+      functions:
+        - process_effective_balance_updates
 
 intents:
   operations:
@@ -120,4 +123,13 @@ intents:
       source_balance_greater_than_effective_balance:
         outcome: changed
       blocked_after_processed:
+        outcome: changed
+    effective_balance_updates:
+      no_change_at_threshold:
+        outcome: no_change
+      step_down:
+        outcome: changed
+      step_up:
+        outcome: changed
+      cap_at_max:
         outcome: changed

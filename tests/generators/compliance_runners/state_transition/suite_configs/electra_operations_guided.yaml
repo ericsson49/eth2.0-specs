@@ -11,6 +11,7 @@ generation:
     - consolidation_request
     - pending_deposits
     - pending_consolidations
+    - effective_balance_updates
   per_handler_limit: 40
   guided: true
   changed_only: false
