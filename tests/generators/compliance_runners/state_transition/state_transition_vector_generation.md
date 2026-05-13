@@ -536,6 +536,7 @@ uv run --extra test python -m tests.generators.compliance_runners.state_transiti
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5 --changed-only
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5 --unchanged-only
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5 --invalid-only
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --handler all --per-handler-limit 20 --guided
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --handler consolidation_request --per-handler-limit 5 --changed-only
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --handler all --per-handler-limit 5 --changed-only
 ```
@@ -549,6 +550,12 @@ emitted as valid vectors. Ignored requests have `post.ssz_snappy` equal to
 `pre.ssz_snappy`. As a result, `--invalid-only` may emit no vectors for these
 handlers until a materialized operation targets a `process_*` function with
 assertion failures.
+
+The `--guided` mode keeps the shared validator profile model, but overlays
+handler-specific guard intents. These intents are written to `meta.yaml` as
+`coverage_tags`, making it possible to compare the intended guard coverage with
+runtime coverage and refine the model or materializer when a tag does not reach
+the expected branch.
 
 It writes standard compliance-style operation cases:
 

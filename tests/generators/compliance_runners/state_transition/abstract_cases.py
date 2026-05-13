@@ -7,6 +7,8 @@ from typing import Any
 
 from tests.generators.compliance_runners.py_to_mzn import Convertor, get_solutions
 
+from .ontology import guided_operation_intents
+
 MODEL_PACKAGE = "tests.generators.compliance_runners.state_transition.models"
 VALIDATOR_STATE_MODEL = "validator_state.py"
 
@@ -26,6 +28,8 @@ HANDLER_NAMES = (
     "consolidation_request",
     "registry_updates",
 )
+
+GUIDED_OPERATION_INTENTS = guided_operation_intents()
 
 
 def load_validator_state_model() -> str:
@@ -100,6 +104,43 @@ def enumerate_materializable_operation_cases(
                 yield make_abstract_case(handler_name, index, profile)
 
 
+def enumerate_guided_operation_cases(
+    handlers: Iterable[str],
+) -> Iterable[AbstractStateTransitionCase]:
+    requested_handlers = tuple(handlers)
+    unknown_handlers = set(requested_handlers) - set(GUIDED_OPERATION_INTENTS)
+    if unknown_handlers:
+        raise ValueError(f"Unsupported guided handlers: {sorted(unknown_handlers)}")
+
+    base_profiles = {}
+    for index, profile in enumerate(solve_validator_state_profiles()):
+        for handler_name in requested_handlers:
+            if handler_name in base_profiles:
+                continue
+            if is_materializable_for_handler(profile, handler_name):
+                base_profiles[handler_name] = (index, profile)
+        if len(base_profiles) == len(requested_handlers):
+            break
+
+    for handler_name in requested_handlers:
+        if handler_name not in base_profiles:
+            continue
+        solution_index, base_profile = base_profiles[handler_name]
+        for intent_name in GUIDED_OPERATION_INTENTS[handler_name]:
+            profile = dict(base_profile)
+            profile["guide_intent"] = intent_name
+            profile["coverage_tags"] = [
+                f"handler:{handler_name}",
+                f"intent:{intent_name}",
+            ]
+            yield make_abstract_case(
+                handler_name,
+                solution_index,
+                profile,
+                case_name=f"guided_{intent_name}",
+            )
+
+
 def is_materializable_for_handler(profile: dict[str, Any], handler_name: str) -> bool:
     if handler_name == "deposit_request":
         return True
@@ -116,10 +157,11 @@ def make_abstract_case(
     handler_name: str,
     solution_index: int,
     profile: dict[str, Any],
+    case_name: str | None = None,
 ) -> AbstractStateTransitionCase:
     return AbstractStateTransitionCase(
         handler_name=handler_name,
-        case_name=f"validator_state_profile_{solution_index:04d}",
+        case_name=case_name or f"validator_state_profile_{solution_index:04d}",
         profile=profile,
     )
 

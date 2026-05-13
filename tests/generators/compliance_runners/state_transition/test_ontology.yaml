@@ -1,0 +1,82 @@
+targets:
+  operations:
+    deposit_request:
+      functions:
+        - process_deposit_request
+    withdrawal_request:
+      functions:
+        - process_withdrawal_request
+    consolidation_request:
+      functions:
+        - is_valid_switch_to_compounding_request
+        - process_consolidation_request
+
+intents:
+  operations:
+    deposit_request:
+      start_index_unset:
+        outcome: changed
+      start_index_set:
+        outcome: changed
+
+    withdrawal_request:
+      queue_full:
+        outcome: no_change
+      pubkey_missing:
+        outcome: no_change
+      bad_source_address:
+        outcome: no_change
+      source_inactive:
+        outcome: no_change
+      source_exiting:
+        outcome: no_change
+      not_active_long_enough:
+        outcome: no_change
+      full_exit_with_pending_withdrawal:
+        outcome: no_change
+      partial_conditions_not_met:
+        outcome: no_change
+      success_full_exit:
+        outcome: changed
+      success_partial_withdrawal:
+        outcome: changed
+
+    consolidation_request:
+      switch_to_compounding_success:
+        outcome: changed
+      switch_pubkey_missing:
+        outcome: no_change
+      switch_bad_source_address:
+        outcome: no_change
+      switch_source_inactive:
+        outcome: no_change
+      switch_source_exiting:
+        outcome: no_change
+      source_equals_target:
+        outcome: no_change
+      queue_full:
+        outcome: no_change
+      churn_too_low:
+        outcome: no_change
+      source_missing:
+        outcome: no_change
+      target_missing:
+        outcome: no_change
+      bad_source_address:
+        outcome: no_change
+      target_not_compounding:
+        outcome: no_change
+      source_inactive:
+        outcome: no_change
+      target_inactive:
+        outcome: no_change
+      source_exiting:
+        outcome: no_change
+      target_exiting:
+        outcome: no_change
+      source_not_active_long_enough:
+        outcome: no_change
+      source_pending_withdrawal:
+        outcome: no_change
+      success:
+        outcome: changed

@@ -24,8 +24,10 @@ MATERIALIZED_HANDLER_NAMES = (
 )
 VALIDATOR_INDEX = 0
 TARGET_VALIDATOR_INDEX = 1
+HELPER_VALIDATOR_INDEX = 2
 SOURCE_ADDRESS = b"\x22" * 20
 TARGET_ADDRESS = b"\x33" * 20
+HELPER_ADDRESS = b"\x77" * 20
 DEPOSIT_PUBKEY = b"\x44" * 48
 DEPOSIT_WITHDRAWAL_CREDENTIALS = b"\x01" + b"\x00" * 11 + b"\x55" * 20
 DEPOSIT_SIGNATURE = b"\x66" * 96
@@ -130,6 +132,7 @@ def materialize_withdrawal_request(
     validator_index = VALIDATOR_INDEX
     prepare_state_for_profile(spec, state, validator_index, profile)
     withdrawal_request = build_withdrawal_request(spec, state, validator_index, profile)
+    apply_withdrawal_intent(spec, state, validator_index, withdrawal_request, profile)
     if invalid_operation:
         withdrawal_request.source_address = invalid_source_address()
 
@@ -170,6 +173,14 @@ def materialize_consolidation_request(
     prepare_state_for_profile(spec, state, source_index, profile)
     prepare_target_for_consolidation(spec, state, target_index)
     consolidation_request = build_consolidation_request(spec, state, source_index, target_index)
+    apply_consolidation_intent(
+        spec,
+        state,
+        source_index,
+        target_index,
+        consolidation_request,
+        profile,
+    )
     if invalid_operation:
         consolidation_request.source_address = invalid_source_address()
 
@@ -215,6 +226,7 @@ def operation_meta(
         "profile": profile,
         "operation_valid": operation_valid,
         "post_state_changed": post_state_changed,
+        "coverage_tags": profile.get("coverage_tags", []),
     }
 
 
@@ -224,7 +236,10 @@ def invalid_source_address() -> bytes:
 
 def prepare_state_for_deposit_request(spec, state, profile: dict[str, Any]) -> None:
     state.pending_deposits = spec.List[spec.PendingDeposit, spec.PENDING_DEPOSITS_LIMIT]()
-    if profile["activation_eligibility_epoch_set"]:
+    intent = profile.get("guide_intent")
+    if intent == "start_index_set" or (
+        intent is None and profile["activation_eligibility_epoch_set"]
+    ):
         state.deposit_requests_start_index = spec.uint64(0)
     else:
         state.deposit_requests_start_index = spec.UNSET_DEPOSIT_REQUESTS_START_INDEX
@@ -238,7 +253,7 @@ def build_deposit_request(spec, profile: dict[str, Any]):
         amount = spec.MAX_EFFECTIVE_BALANCE_ELECTRA
 
     index = spec.uint64(0)
-    if profile["activation_eligibility_epoch_set"]:
+    if profile.get("guide_intent") == "start_index_set" or profile["activation_eligibility_epoch_set"]:
         index = spec.uint64(1)
 
     return spec.DepositRequest(
@@ -339,6 +354,102 @@ def build_withdrawal_request(spec, state, validator_index: int, profile: dict[st
     )
 
 
+def apply_withdrawal_intent(spec, state, validator_index: int, withdrawal_request, profile) -> None:
+    intent = profile.get("guide_intent")
+    if intent is None:
+        return
+
+    prepare_withdrawal_source(spec, state, validator_index, compounding=intent != "success_full_exit")
+    withdrawal_request.source_address = SOURCE_ADDRESS
+    withdrawal_request.validator_pubkey = state.validators[validator_index].pubkey
+    withdrawal_request.amount = spec.FULL_EXIT_REQUEST_AMOUNT
+
+    if intent in ("success_partial_withdrawal", "queue_full"):
+        withdrawal_request.amount = spec.Gwei(1)
+
+    if intent == "queue_full":
+        fill_pending_partial_withdrawals(spec, state, validator_index)
+    elif intent == "pubkey_missing":
+        withdrawal_request.validator_pubkey = b"\xff" * 48
+    elif intent == "bad_source_address":
+        withdrawal_request.source_address = invalid_source_address()
+    elif intent == "source_inactive":
+        state.validators[validator_index].activation_epoch = spec.FAR_FUTURE_EPOCH
+    elif intent == "source_exiting":
+        state.validators[validator_index].exit_epoch = spec.Epoch(spec.get_current_epoch(state) + 1)
+    elif intent == "not_active_long_enough":
+        state.validators[validator_index].activation_epoch = spec.get_current_epoch(state)
+    elif intent == "full_exit_with_pending_withdrawal":
+        state.pending_partial_withdrawals.append(
+            spec.PendingPartialWithdrawal(
+                validator_index=validator_index,
+                amount=spec.Gwei(1),
+                withdrawable_epoch=spec.Epoch(spec.get_current_epoch(state) + 1),
+            )
+        )
+    elif intent == "partial_conditions_not_met":
+        set_eth1_withdrawal_credential_with_balance(
+            spec,
+            state,
+            validator_index,
+            effective_balance=spec.MIN_ACTIVATION_BALANCE,
+            balance=spec.MIN_ACTIVATION_BALANCE,
+            address=SOURCE_ADDRESS,
+        )
+        withdrawal_request.amount = spec.Gwei(1)
+    elif intent in ("success_full_exit", "success_partial_withdrawal"):
+        return
+    else:
+        raise ValueError(f"Unsupported withdrawal guide intent: {intent}")
+
+
+def prepare_withdrawal_source(spec, state, validator_index: int, *, compounding: bool) -> None:
+    current_epoch = spec.get_current_epoch(state)
+    validator = state.validators[validator_index]
+    validator.slashed = False
+    validator.activation_eligibility_epoch = spec.Epoch(0)
+    validator.activation_epoch = spec.Epoch(
+        max(0, int(current_epoch) - int(spec.config.SHARD_COMMITTEE_PERIOD))
+    )
+    validator.exit_epoch = spec.FAR_FUTURE_EPOCH
+    validator.withdrawable_epoch = spec.FAR_FUTURE_EPOCH
+    if compounding:
+        set_compounding_withdrawal_credential_with_balance(
+            spec,
+            state,
+            validator_index,
+            effective_balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+            balance=spec.Gwei(int(spec.MIN_ACTIVATION_BALANCE) + int(spec.EFFECTIVE_BALANCE_INCREMENT)),
+            address=SOURCE_ADDRESS,
+        )
+    else:
+        set_eth1_withdrawal_credential_with_balance(
+            spec,
+            state,
+            validator_index,
+            effective_balance=spec.MIN_ACTIVATION_BALANCE,
+            balance=spec.MIN_ACTIVATION_BALANCE,
+            address=SOURCE_ADDRESS,
+        )
+    state.pending_partial_withdrawals = spec.List[
+        spec.PendingPartialWithdrawal, spec.PENDING_PARTIAL_WITHDRAWALS_LIMIT
+    ]()
+
+
+def fill_pending_partial_withdrawals(spec, state, validator_index: int) -> None:
+    state.pending_partial_withdrawals = spec.List[
+        spec.PendingPartialWithdrawal, spec.PENDING_PARTIAL_WITHDRAWALS_LIMIT
+    ]()
+    for _ in range(spec.PENDING_PARTIAL_WITHDRAWALS_LIMIT):
+        state.pending_partial_withdrawals.append(
+            spec.PendingPartialWithdrawal(
+                validator_index=validator_index,
+                amount=spec.Gwei(1),
+                withdrawable_epoch=spec.Epoch(spec.get_current_epoch(state) + 1),
+            )
+        )
+
+
 def prepare_target_for_consolidation(spec, state, target_index: int) -> None:
     current_epoch = spec.get_current_epoch(state)
     target = state.validators[target_index]
@@ -364,6 +475,181 @@ def build_consolidation_request(spec, state, source_index: int, target_index: in
         source_pubkey=state.validators[source_index].pubkey,
         target_pubkey=state.validators[target_index].pubkey,
     )
+
+
+def apply_consolidation_intent(
+    spec,
+    state,
+    source_index: int,
+    target_index: int,
+    consolidation_request,
+    profile,
+) -> None:
+    intent = profile.get("guide_intent")
+    if intent is None:
+        return
+
+    prepare_consolidation_source(spec, state, source_index)
+    prepare_target_for_consolidation(spec, state, target_index)
+    state.pending_consolidations = spec.List[
+        spec.PendingConsolidation, spec.PENDING_CONSOLIDATIONS_LIMIT
+    ]()
+    state.pending_partial_withdrawals = spec.List[
+        spec.PendingPartialWithdrawal, spec.PENDING_PARTIAL_WITHDRAWALS_LIMIT
+    ]()
+    consolidation_request.source_address = SOURCE_ADDRESS
+    consolidation_request.source_pubkey = state.validators[source_index].pubkey
+    consolidation_request.target_pubkey = state.validators[target_index].pubkey
+
+    if intent == "switch_to_compounding_success":
+        prepare_switch_to_compounding_source(spec, state, source_index)
+        consolidation_request.target_pubkey = state.validators[source_index].pubkey
+    elif intent == "switch_pubkey_missing":
+        prepare_switch_to_compounding_source(spec, state, source_index)
+        consolidation_request.source_pubkey = b"\xff" * 48
+        consolidation_request.target_pubkey = b"\xff" * 48
+    elif intent == "switch_bad_source_address":
+        prepare_switch_to_compounding_source(spec, state, source_index)
+        consolidation_request.target_pubkey = state.validators[source_index].pubkey
+        consolidation_request.source_address = invalid_source_address()
+    elif intent == "switch_source_inactive":
+        prepare_switch_to_compounding_source(spec, state, source_index)
+        consolidation_request.target_pubkey = state.validators[source_index].pubkey
+        state.validators[source_index].activation_epoch = spec.FAR_FUTURE_EPOCH
+    elif intent == "switch_source_exiting":
+        prepare_switch_to_compounding_source(spec, state, source_index)
+        consolidation_request.target_pubkey = state.validators[source_index].pubkey
+        state.validators[source_index].exit_epoch = spec.Epoch(spec.get_current_epoch(state) + 1)
+    elif intent == "source_equals_target":
+        consolidation_request.target_pubkey = state.validators[source_index].pubkey
+    elif intent == "queue_full":
+        fill_pending_consolidations(spec, state, source_index, target_index)
+    elif intent == "churn_too_low":
+        set_compounding_withdrawal_credential_with_balance(
+            spec,
+            state,
+            source_index,
+            effective_balance=spec.MIN_ACTIVATION_BALANCE,
+            balance=spec.MIN_ACTIVATION_BALANCE,
+            address=SOURCE_ADDRESS,
+        )
+        set_compounding_withdrawal_credential_with_balance(
+            spec,
+            state,
+            target_index,
+            effective_balance=spec.MIN_ACTIVATION_BALANCE,
+            balance=spec.MIN_ACTIVATION_BALANCE,
+            address=TARGET_ADDRESS,
+        )
+    elif intent == "source_missing":
+        consolidation_request.source_pubkey = b"\xff" * 48
+    elif intent == "target_missing":
+        consolidation_request.target_pubkey = b"\xff" * 48
+    elif intent == "bad_source_address":
+        consolidation_request.source_address = invalid_source_address()
+    elif intent == "target_not_compounding":
+        set_eth1_withdrawal_credential_with_balance(
+            spec,
+            state,
+            target_index,
+            effective_balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+            balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+            address=TARGET_ADDRESS,
+        )
+    elif intent == "source_inactive":
+        prepare_churn_helper(spec, state)
+        state.validators[source_index].activation_epoch = spec.FAR_FUTURE_EPOCH
+    elif intent == "target_inactive":
+        prepare_churn_helper(spec, state)
+        state.validators[target_index].activation_epoch = spec.FAR_FUTURE_EPOCH
+    elif intent == "source_exiting":
+        state.validators[source_index].exit_epoch = spec.Epoch(spec.get_current_epoch(state) + 1)
+    elif intent == "target_exiting":
+        state.validators[target_index].exit_epoch = spec.Epoch(spec.get_current_epoch(state) + 1)
+    elif intent == "source_not_active_long_enough":
+        state.validators[source_index].activation_epoch = spec.get_current_epoch(state)
+    elif intent == "source_pending_withdrawal":
+        state.pending_partial_withdrawals.append(
+            spec.PendingPartialWithdrawal(
+                validator_index=source_index,
+                amount=spec.Gwei(1),
+                withdrawable_epoch=spec.Epoch(spec.get_current_epoch(state) + 1),
+            )
+        )
+    elif intent == "success":
+        return
+    else:
+        raise ValueError(f"Unsupported consolidation guide intent: {intent}")
+
+
+def prepare_consolidation_source(spec, state, source_index: int) -> None:
+    current_epoch = spec.get_current_epoch(state)
+    source = state.validators[source_index]
+    source.slashed = False
+    source.activation_eligibility_epoch = spec.Epoch(0)
+    source.activation_epoch = spec.Epoch(
+        max(0, int(current_epoch) - int(spec.config.SHARD_COMMITTEE_PERIOD))
+    )
+    source.exit_epoch = spec.FAR_FUTURE_EPOCH
+    source.withdrawable_epoch = spec.FAR_FUTURE_EPOCH
+    set_compounding_withdrawal_credential_with_balance(
+        spec,
+        state,
+        source_index,
+        effective_balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+        balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+        address=SOURCE_ADDRESS,
+    )
+
+
+def prepare_switch_to_compounding_source(spec, state, source_index: int) -> None:
+    current_epoch = spec.get_current_epoch(state)
+    source = state.validators[source_index]
+    source.slashed = False
+    source.activation_eligibility_epoch = spec.Epoch(0)
+    source.activation_epoch = spec.Epoch(
+        max(0, int(current_epoch) - int(spec.config.SHARD_COMMITTEE_PERIOD))
+    )
+    source.exit_epoch = spec.FAR_FUTURE_EPOCH
+    source.withdrawable_epoch = spec.FAR_FUTURE_EPOCH
+    set_eth1_withdrawal_credential_with_balance(
+        spec,
+        state,
+        source_index,
+        effective_balance=spec.MIN_ACTIVATION_BALANCE,
+        balance=spec.MIN_ACTIVATION_BALANCE,
+        address=SOURCE_ADDRESS,
+    )
+
+
+def prepare_churn_helper(spec, state) -> None:
+    current_epoch = spec.get_current_epoch(state)
+    helper = state.validators[HELPER_VALIDATOR_INDEX]
+    helper.slashed = False
+    helper.activation_eligibility_epoch = spec.Epoch(0)
+    helper.activation_epoch = spec.Epoch(
+        max(0, int(current_epoch) - int(spec.config.SHARD_COMMITTEE_PERIOD))
+    )
+    helper.exit_epoch = spec.FAR_FUTURE_EPOCH
+    helper.withdrawable_epoch = spec.FAR_FUTURE_EPOCH
+    set_compounding_withdrawal_credential_with_balance(
+        spec,
+        state,
+        HELPER_VALIDATOR_INDEX,
+        effective_balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+        balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+        address=HELPER_ADDRESS,
+    )
+
+
+def fill_pending_consolidations(spec, state, source_index: int, target_index: int) -> None:
+    state.pending_consolidations = spec.List[
+        spec.PendingConsolidation, spec.PENDING_CONSOLIDATIONS_LIMIT
+    ]()
+    for _ in range(spec.PENDING_CONSOLIDATIONS_LIMIT):
+        state.pending_consolidations.append(
+            spec.PendingConsolidation(source_index=source_index, target_index=target_index)
+        )
 
 
 def profile_epoch(spec, current_epoch, relation: str):

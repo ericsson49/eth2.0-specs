@@ -10,7 +10,11 @@ from tests.generators.compliance_runners.gen_base.output import dump_test_case_r
 from tests.generators.compliance_runners.gen_base.pytest_support import configure_generator_context
 from tests.infra.dumper import Dumper
 
-from .abstract_cases import enumerate_materializable_operation_cases, select_abstract_cases
+from .abstract_cases import (
+    enumerate_guided_operation_cases,
+    enumerate_materializable_operation_cases,
+    select_abstract_cases,
+)
 from .materializers import materialize_case, MATERIALIZED_HANDLER_NAMES, UnsupportedProfileError
 
 configure_generator_context()
@@ -40,6 +44,11 @@ def main() -> None:
         help="Only write invalid operation cases that are expected to raise an assertion.",
     )
     parser.add_argument(
+        "--guided",
+        action="store_true",
+        help="Generate handler-specific guard-intent cases for coverage evaluation.",
+    )
+    parser.add_argument(
         "--handler",
         action="append",
         help=(
@@ -59,6 +68,7 @@ def main() -> None:
         changed_only=args.changed_only,
         unchanged_only=args.unchanged_only,
         invalid_only=args.invalid_only,
+        guided=args.guided,
         keep_existing=args.keep_existing,
     )
 
@@ -82,6 +92,7 @@ def generate_vectors(
     changed_only: bool,
     unchanged_only: bool,
     invalid_only: bool,
+    guided: bool,
     keep_existing: bool,
 ) -> None:
     selected_filters = sum([changed_only, unchanged_only, invalid_only])
@@ -89,7 +100,9 @@ def generate_vectors(
         raise ValueError("--changed-only, --unchanged-only, and --invalid-only are exclusive")
 
     dumper = Dumper()
-    if changed_only or invalid_only:
+    if guided:
+        abstract_cases = enumerate_guided_operation_cases(handlers=handlers)
+    elif changed_only or invalid_only:
         abstract_cases = enumerate_materializable_operation_cases(handlers=handlers)
     else:
         abstract_cases = select_abstract_cases(
