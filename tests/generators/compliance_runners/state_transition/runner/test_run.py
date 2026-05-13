@@ -12,6 +12,28 @@ from eth_consensus_specs.test.context import expect_assertion_error
 from eth_consensus_specs.test.helpers.specs import spec_targets
 from eth_consensus_specs.utils import bls
 
+OPERATION_INPUTS = {
+    "deposit": ("deposit", "Deposit"),
+    "deposit_request": ("deposit_request", "DepositRequest"),
+    "voluntary_exit": ("voluntary_exit", "SignedVoluntaryExit"),
+    "withdrawal_request": ("withdrawal_request", "WithdrawalRequest"),
+    "consolidation_request": ("consolidation_request", "ConsolidationRequest"),
+}
+
+OPERATION_PROCESSORS = {
+    "deposit": "process_deposit",
+    "deposit_request": "process_deposit_request",
+    "voluntary_exit": "process_voluntary_exit",
+    "withdrawal_request": "process_withdrawal_request",
+    "consolidation_request": "process_consolidation_request",
+}
+
+EPOCH_PROCESSORS = {
+    "pending_deposits": "process_pending_deposits",
+    "pending_consolidations": "process_pending_consolidations",
+    "effective_balance_updates": "process_effective_balance_updates",
+}
+
 StateTransitionTestInfo = namedtuple(
     "StateTransitionTestInfo",
     [
@@ -54,16 +76,9 @@ def decode_optional_operation(spec, test_dir: Path, handler: str):
 
 
 def decode_operation(spec, test_dir: Path, handler: str):
-    if handler == "deposit":
-        return decode_file(spec, test_dir, "deposit", spec.Deposit)
-    if handler == "deposit_request":
-        return decode_file(spec, test_dir, "deposit_request", spec.DepositRequest)
-    if handler == "voluntary_exit":
-        return decode_file(spec, test_dir, "voluntary_exit", spec.SignedVoluntaryExit)
-    if handler == "withdrawal_request":
-        return decode_file(spec, test_dir, "withdrawal_request", spec.WithdrawalRequest)
-    if handler == "consolidation_request":
-        return decode_file(spec, test_dir, "consolidation_request", spec.ConsolidationRequest)
+    if handler in OPERATION_INPUTS:
+        input_name, type_name = OPERATION_INPUTS[handler]
+        return decode_file(spec, test_dir, input_name, getattr(spec, type_name))
     raise ValueError(f"Unsupported operations handler: {handler}")
 
 
@@ -92,20 +107,14 @@ def run_test(test_info: StateTransitionTestInfo):
         if runner != "operations":
             raise ValueError(f"Unsupported state-transition runner: {runner}")
 
-        if handler == "deposit":
-            run_deposit_case(spec, state, test_case["operation"], expected_post)
-            return
-        if handler == "deposit_request":
-            run_deposit_request_case(spec, state, test_case["operation"], expected_post)
-            return
-        if handler == "voluntary_exit":
-            run_voluntary_exit_case(spec, state, test_case["operation"], expected_post)
-            return
-        if handler == "withdrawal_request":
-            run_withdrawal_request_case(spec, state, test_case["operation"], expected_post)
-            return
-        if handler == "consolidation_request":
-            run_consolidation_request_case(spec, state, test_case["operation"], expected_post)
+        if handler in OPERATION_PROCESSORS:
+            process_fn = getattr(spec, OPERATION_PROCESSORS[handler])
+            run_processing_case(
+                process_fn,
+                state,
+                test_case["operation"],
+                expected_post,
+            )
             return
 
         raise ValueError(f"Unsupported operations handler: {handler}")
@@ -113,67 +122,25 @@ def run_test(test_info: StateTransitionTestInfo):
         bls.bls_active = old_bls_active
 
 
-def run_deposit_case(spec, state, deposit, expected_post):
-    if expected_post is None:
-        expect_assertion_error(lambda: spec.process_deposit(state, deposit))
-        return
-
-    spec.process_deposit(state, deposit)
-    assert state == expected_post
-
-
 def run_epoch_processing_case(spec, state, handler, expected_post):
-    if handler == "pending_deposits":
-        process_fn = spec.process_pending_deposits
-    elif handler == "pending_consolidations":
-        process_fn = spec.process_pending_consolidations
-    elif handler == "effective_balance_updates":
-        process_fn = spec.process_effective_balance_updates
-    else:
+    if handler not in EPOCH_PROCESSORS:
         raise ValueError(f"Unsupported epoch_processing handler: {handler}")
+    process_fn = getattr(spec, EPOCH_PROCESSORS[handler])
+    run_processing_case(process_fn, state, None, expected_post)
+
+
+def run_processing_case(process_fn, state, operation, expected_post):
+    def run_processing():
+        if operation is None:
+            process_fn(state)
+        else:
+            process_fn(state, operation)
+
     if expected_post is None:
-        expect_assertion_error(lambda: process_fn(state))
+        expect_assertion_error(run_processing)
         return
 
-    process_fn(state)
-    assert state == expected_post
-
-
-def run_deposit_request_case(spec, state, deposit_request, expected_post):
-    if expected_post is None:
-        expect_assertion_error(lambda: spec.process_deposit_request(state, deposit_request))
-        return
-
-    spec.process_deposit_request(state, deposit_request)
-    assert state == expected_post
-
-
-def run_voluntary_exit_case(spec, state, signed_voluntary_exit, expected_post):
-    if expected_post is None:
-        expect_assertion_error(lambda: spec.process_voluntary_exit(state, signed_voluntary_exit))
-        return
-
-    spec.process_voluntary_exit(state, signed_voluntary_exit)
-    assert state == expected_post
-
-
-def run_withdrawal_request_case(spec, state, withdrawal_request, expected_post):
-    if expected_post is None:
-        expect_assertion_error(lambda: spec.process_withdrawal_request(state, withdrawal_request))
-        return
-
-    spec.process_withdrawal_request(state, withdrawal_request)
-    assert state == expected_post
-
-
-def run_consolidation_request_case(spec, state, consolidation_request, expected_post):
-    if expected_post is None:
-        expect_assertion_error(
-            lambda: spec.process_consolidation_request(state, consolidation_request)
-        )
-        return
-
-    spec.process_consolidation_request(state, consolidation_request)
+    run_processing()
     assert state == expected_post
 
 

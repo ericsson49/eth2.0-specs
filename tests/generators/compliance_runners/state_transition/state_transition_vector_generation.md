@@ -556,6 +556,12 @@ emitted as valid vectors. Ignored requests have `post.ssz_snappy` equal to
 handlers until a materialized operation targets a `process_*` function with
 assertion failures.
 
+Most generated cases keep BLS verification disabled for speed, matching the
+local runner default. Cases that intentionally exercise signature-sensitive
+branches may set `bls_setting: 1` in `meta.yaml`; the runner enables BLS only for
+that case and restores the previous setting afterwards. The first use of this is
+`operations/deposit` for an invalid proof-of-possession signature.
+
 The `--guided` mode keeps the shared validator profile model, but overlays
 handler-specific guard intents. These intents are written to `meta.yaml` as
 `coverage_tags`, making it possible to compare the intended guard coverage with
@@ -603,3 +609,6 @@ uv run --extra test python -m tests.generators.compliance_runners.state_transiti
 The default guided Electra operations profile lives in
 `suite_configs/electra_operations_guided.yaml` and fixes the fork, preset,
 handlers, generation mode, output directories, and coverage settings.
+When `keep_existing` is false, the suite runner removes the configured vector
+output directory before regenerating, preventing stale cases from affecting
+validation or semantic coverage reports.

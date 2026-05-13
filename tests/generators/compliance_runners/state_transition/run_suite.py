@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -88,6 +89,10 @@ def read_yaml(path: Path):
 
 
 def generate_from_config(generation_config: dict, output_dir: Path) -> None:
+    keep_existing = generation_config.get("keep_existing", False)
+    if output_dir.exists() and not keep_existing:
+        shutil.rmtree(output_dir)
+
     generate_vectors(
         output_dir=output_dir,
         fork_name=generation_config["fork"],
@@ -98,7 +103,7 @@ def generate_from_config(generation_config: dict, output_dir: Path) -> None:
         unchanged_only=generation_config.get("unchanged_only", False),
         invalid_only=generation_config.get("invalid_only", False),
         guided=generation_config.get("guided", False),
-        keep_existing=generation_config.get("keep_existing", False),
+        keep_existing=keep_existing,
     )
 
 
