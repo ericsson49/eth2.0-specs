@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from eth_consensus_specs.test.helpers.deposits import prepare_pending_deposit
+from eth_consensus_specs.test.helpers.deposits import (
+    prepare_pending_deposit,
+    prepare_state_and_deposit,
+)
 from eth_consensus_specs.test.helpers.keys import privkeys
 from eth_consensus_specs.test.helpers.voluntary_exits import sign_voluntary_exit
 from eth_consensus_specs.test.helpers.withdrawals import (
     set_compounding_withdrawal_credential_with_balance,
     set_eth1_withdrawal_credential_with_balance,
 )
+from eth_consensus_specs.utils import bls
 from eth_consensus_specs.utils.ssz.ssz_impl import serialize
 from tests.generators.compliance_runners.gen_base.gen_typing import (
     TestCase,
@@ -22,6 +26,7 @@ OPERATIONS_RUNNER_NAME = "operations"
 EPOCH_PROCESSING_RUNNER_NAME = "epoch_processing"
 SUITE_NAME = "minizinc_abstract"
 MATERIALIZED_HANDLER_NAMES = (
+    "deposit",
     "deposit_request",
     "voluntary_exit",
     "withdrawal_request",
@@ -67,6 +72,14 @@ def materialize_case(
         suite_name=SUITE_NAME,
         case_name=abstract_case.case_name,
     )
+    if abstract_case.handler_name == "deposit":
+        return materialize_deposit(
+            spec,
+            state,
+            test_case,
+            abstract_case.profile,
+            invalid_operation=invalid_operation,
+        )
     if abstract_case.handler_name == "deposit_request":
         return materialize_deposit_request(
             spec,
@@ -193,6 +206,42 @@ def runner_name_for_handler(handler_name: str) -> str:
     ):
         return EPOCH_PROCESSING_RUNNER_NAME
     return OPERATIONS_RUNNER_NAME
+
+
+def materialize_deposit(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+    *,
+    invalid_operation: bool,
+) -> TestCaseResult:
+    deposit = prepare_state_for_deposit(spec, state, profile)
+    if invalid_operation:
+        deposit.proof[0] = b"\xff" * 32
+
+    pre_state = state.copy()
+    case_parts = operation_case_parts(pre_state, "deposit", deposit)
+    try:
+        with_bls_setting(profile, lambda: spec.process_deposit(state, deposit))
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
 
 
 def materialize_deposit_request(
@@ -408,7 +457,62 @@ def operation_meta(
         "operation_valid": operation_valid,
         "post_state_changed": post_state_changed,
         "coverage_tags": profile.get("coverage_tags", []),
+        "bls_setting": profile.get("bls_setting", 0),
     }
+
+
+def with_bls_setting(profile: dict[str, Any], fn):
+    old_bls_active = bls.bls_active
+    bls.bls_active = bool(profile.get("bls_setting", 0))
+    try:
+        return fn()
+    finally:
+        bls.bls_active = old_bls_active
+
+
+def prepare_state_for_deposit(spec, state, profile: dict[str, Any]):
+    state.pending_deposits = spec.List[spec.PendingDeposit, spec.PENDING_DEPOSITS_LIMIT]()
+    intent = profile.get("guide_intent")
+    if intent in (None, "new_validator"):
+        return prepare_state_and_deposit(
+            spec,
+            state,
+            validator_index=len(state.validators),
+            amount=spec.MIN_ACTIVATION_BALANCE,
+            withdrawal_credentials=DEPOSIT_WITHDRAWAL_CREDENTIALS,
+            signed=True,
+        )
+    if intent == "top_up_existing_validator":
+        return prepare_state_and_deposit(
+            spec,
+            state,
+            validator_index=VALIDATOR_INDEX,
+            amount=spec.EFFECTIVE_BALANCE_INCREMENT,
+            withdrawal_credentials=state.validators[VALIDATOR_INDEX].withdrawal_credentials,
+            signed=True,
+        )
+    if intent == "invalid_proof":
+        deposit = prepare_state_and_deposit(
+            spec,
+            state,
+            validator_index=len(state.validators),
+            amount=spec.MIN_ACTIVATION_BALANCE,
+            withdrawal_credentials=DEPOSIT_WITHDRAWAL_CREDENTIALS,
+            signed=True,
+        )
+        state.eth1_data.deposit_root = b"\xff" * 32
+        return deposit
+    if intent == "invalid_signature":
+        profile["bls_setting"] = 1
+        return prepare_state_and_deposit(
+            spec,
+            state,
+            validator_index=len(state.validators),
+            amount=spec.MIN_ACTIVATION_BALANCE,
+            withdrawal_credentials=DEPOSIT_WITHDRAWAL_CREDENTIALS,
+            signed=False,
+        )
+    raise ValueError(f"Unsupported deposit guide intent: {intent}")
 
 
 def invalid_source_address() -> bytes:

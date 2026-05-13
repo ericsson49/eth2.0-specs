@@ -23,6 +23,7 @@ class AbstractStateTransitionCase:
 
 
 HANDLER_NAMES = (
+    "deposit",
     "deposit_request",
     "voluntary_exit",
     "withdrawal_request",
@@ -146,6 +147,8 @@ def enumerate_guided_operation_cases(
 
 
 def is_materializable_for_handler(profile: dict[str, Any], handler_name: str) -> bool:
+    if handler_name == "deposit":
+        return True
     if handler_name == "deposit_request":
         return True
     if handler_name == "voluntary_exit":

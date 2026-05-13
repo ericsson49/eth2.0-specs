@@ -10,6 +10,7 @@ from snappy import uncompress
 
 from eth_consensus_specs.test.context import expect_assertion_error
 from eth_consensus_specs.test.helpers.specs import spec_targets
+from eth_consensus_specs.utils import bls
 
 StateTransitionTestInfo = namedtuple(
     "StateTransitionTestInfo",
@@ -53,6 +54,8 @@ def decode_optional_operation(spec, test_dir: Path, handler: str):
 
 
 def decode_operation(spec, test_dir: Path, handler: str):
+    if handler == "deposit":
+        return decode_file(spec, test_dir, "deposit", spec.Deposit)
     if handler == "deposit_request":
         return decode_file(spec, test_dir, "deposit_request", spec.DepositRequest)
     if handler == "voluntary_exit":
@@ -78,28 +81,45 @@ def run_test(test_info: StateTransitionTestInfo):
     test_case = get_test_case(spec, Path(test_dir), handler)
     state = test_case["pre"]
     expected_post = test_case["post"]
+    old_bls_active = bls.bls_active
+    bls.bls_active = bool(test_case["meta"].get("bls_setting", 0))
 
-    if runner == "epoch_processing":
-        run_epoch_processing_case(spec, state, handler, expected_post)
+    try:
+        if runner == "epoch_processing":
+            run_epoch_processing_case(spec, state, handler, expected_post)
+            return
+
+        if runner != "operations":
+            raise ValueError(f"Unsupported state-transition runner: {runner}")
+
+        if handler == "deposit":
+            run_deposit_case(spec, state, test_case["operation"], expected_post)
+            return
+        if handler == "deposit_request":
+            run_deposit_request_case(spec, state, test_case["operation"], expected_post)
+            return
+        if handler == "voluntary_exit":
+            run_voluntary_exit_case(spec, state, test_case["operation"], expected_post)
+            return
+        if handler == "withdrawal_request":
+            run_withdrawal_request_case(spec, state, test_case["operation"], expected_post)
+            return
+        if handler == "consolidation_request":
+            run_consolidation_request_case(spec, state, test_case["operation"], expected_post)
+            return
+
+        raise ValueError(f"Unsupported operations handler: {handler}")
+    finally:
+        bls.bls_active = old_bls_active
+
+
+def run_deposit_case(spec, state, deposit, expected_post):
+    if expected_post is None:
+        expect_assertion_error(lambda: spec.process_deposit(state, deposit))
         return
 
-    if runner != "operations":
-        raise ValueError(f"Unsupported state-transition runner: {runner}")
-
-    if handler == "deposit_request":
-        run_deposit_request_case(spec, state, test_case["operation"], expected_post)
-        return
-    if handler == "voluntary_exit":
-        run_voluntary_exit_case(spec, state, test_case["operation"], expected_post)
-        return
-    if handler == "withdrawal_request":
-        run_withdrawal_request_case(spec, state, test_case["operation"], expected_post)
-        return
-    if handler == "consolidation_request":
-        run_consolidation_request_case(spec, state, test_case["operation"], expected_post)
-        return
-
-    raise ValueError(f"Unsupported operations handler: {handler}")
+    spec.process_deposit(state, deposit)
+    assert state == expected_post
 
 
 def run_epoch_processing_case(spec, state, handler, expected_post):

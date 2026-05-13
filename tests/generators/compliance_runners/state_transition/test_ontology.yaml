@@ -1,5 +1,9 @@
 targets:
   operations:
+    deposit:
+      functions:
+        - process_deposit
+        - apply_deposit
     deposit_request:
       functions:
         - process_deposit_request
@@ -26,6 +30,16 @@ targets:
 
 intents:
   operations:
+    deposit:
+      new_validator:
+        outcome: changed
+      top_up_existing_validator:
+        outcome: changed
+      invalid_proof:
+        outcome: assertion_failure
+      invalid_signature:
+        outcome: changed
+
     deposit_request:
       start_index_unset:
         outcome: changed
