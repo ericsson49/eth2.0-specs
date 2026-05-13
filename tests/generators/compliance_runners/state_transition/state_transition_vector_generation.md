@@ -610,6 +610,7 @@ For reproducible suite generation, use a checked-in suite config:
 
 ```bash
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage --summary
 ```
 
 The default guided Electra operations profile lives in
@@ -618,3 +619,14 @@ handlers, generation mode, output directories, and coverage settings.
 When `keep_existing` is false, the suite runner removes the configured vector
 output directory before regenerating, preventing stale cases from affecting
 validation or semantic coverage reports.
+
+The suite health summary can also be run directly over an existing generated
+suite:
+
+```bash
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.summarize_suite --test-dir /tmp/state-transition-vectors --coverage-dir /tmp/state-transition-coverage
+```
+
+It reports generated handlers, intents per handler, missing ontology intents,
+observed outcome counts, semantic outcome mismatches, and target coverage totals
+when a coverage directory is provided.

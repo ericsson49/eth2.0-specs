@@ -10,6 +10,7 @@ import pytest
 from ruamel.yaml import YAML
 
 from .generate_vectors import generate_vectors
+from .summarize_suite import summarize_suite
 
 DEFAULT_SUITE_CONFIG_DIR = Path(
     "tests/generators/compliance_runners/state_transition/suite_configs"
@@ -54,6 +55,17 @@ def main() -> None:
         type=Path,
         help="Override coverage output directory.",
     )
+    parser.add_argument(
+        "--summary",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Print a suite health summary after generation, validation, or coverage.",
+    )
+    parser.add_argument(
+        "--summary-output",
+        type=Path,
+        help="Optional file to write the suite health summary to.",
+    )
     args = parser.parse_args()
 
     suite_config_path = resolve_suite_config_path(args.suite)
@@ -71,6 +83,21 @@ def main() -> None:
         coverage_config = suite_config.get("coverage", {})
         coverage_output = args.coverage_output or Path(coverage_config["output"])
         measure_from_config(coverage_config, test_dir=output_dir, output_dir=coverage_output)
+    else:
+        coverage_config = suite_config.get("coverage", {})
+        coverage_output = args.coverage_output or Path(coverage_config.get("output", ""))
+
+    if args.summary:
+        ontology_path = coverage_config.get("ontology")
+        summary = summarize_suite(
+            test_dir=output_dir,
+            ontology_path=Path(ontology_path) if ontology_path else None,
+            coverage_dir=coverage_output if args.coverage or coverage_output.exists() else None,
+        )
+        print(summary)
+        if args.summary_output is not None:
+            args.summary_output.parent.mkdir(parents=True, exist_ok=True)
+            args.summary_output.write_text(summary)
 
 
 def resolve_suite_config_path(suite: str) -> Path:
