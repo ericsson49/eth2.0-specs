@@ -6,6 +6,9 @@ generation:
   fork: electra
   preset: minimal
   handlers:
+    - proposer_slashing
+    - attester_slashing
+    - attestation
     - deposit
     - bls_to_execution_change
     - deposit_request
@@ -15,6 +18,8 @@ generation:
     - pending_deposits
     - pending_consolidations
     - effective_balance_updates
+    - registry_updates
+    - justification_and_finalization
   per_handler_limit: 40
   guided: true
   changed_only: false

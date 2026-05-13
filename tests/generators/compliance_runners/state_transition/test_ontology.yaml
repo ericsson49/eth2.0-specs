@@ -1,5 +1,14 @@
 targets:
   operations:
+    proposer_slashing:
+      functions:
+        - process_proposer_slashing
+    attester_slashing:
+      functions:
+        - process_attester_slashing
+    attestation:
+      functions:
+        - process_attestation
     deposit:
       functions:
         - process_deposit
@@ -21,6 +30,13 @@ targets:
         - is_valid_switch_to_compounding_request
         - process_consolidation_request
   epoch_processing:
+    justification_and_finalization:
+      functions:
+        - process_justification_and_finalization
+        - weigh_justification_and_finalization
+    registry_updates:
+      functions:
+        - process_registry_updates
     pending_deposits:
       functions:
         - process_pending_deposits
@@ -33,6 +49,46 @@ targets:
 
 intents:
   operations:
+    proposer_slashing:
+      success:
+        outcome: changed
+      same_header:
+        outcome: assertion_failure
+      proposer_mismatch:
+        outcome: assertion_failure
+      already_slashed:
+        outcome: assertion_failure
+      bad_signature:
+        outcome: assertion_failure
+
+    attester_slashing:
+      success:
+        outcome: changed
+      not_slashable_data:
+        outcome: assertion_failure
+      no_overlap:
+        outcome: assertion_failure
+      already_slashed:
+        outcome: assertion_failure
+      bad_signature:
+        outcome: assertion_failure
+
+    attestation:
+      success:
+        outcome: changed
+      previous_epoch_success:
+        outcome: changed
+      future_slot:
+        outcome: assertion_failure
+      wrong_target_epoch:
+        outcome: assertion_failure
+      bad_committee_index:
+        outcome: assertion_failure
+      empty_aggregation:
+        outcome: assertion_failure
+      bad_signature:
+        outcome: assertion_failure
+
     deposit:
       new_validator:
         outcome: changed
@@ -138,6 +194,34 @@ intents:
         outcome: changed
 
   epoch_processing:
+    justification_and_finalization:
+      genesis_skip:
+        outcome: no_change
+      current_justified:
+        outcome: changed
+      previous_justified:
+        outcome: changed
+      poor_support:
+        outcome: no_change
+      finalize_current:
+        outcome: changed
+      finalize_234:
+        outcome: changed
+      finalize_23:
+        outcome: changed
+      finalize_123:
+        outcome: changed
+
+    registry_updates:
+      no_change:
+        outcome: no_change
+      activation_queue:
+        outcome: changed
+      ejection:
+        outcome: changed
+      activation:
+        outcome: changed
+
     pending_deposits:
       success_top_up:
         outcome: changed

@@ -13,6 +13,9 @@ from eth_consensus_specs.test.helpers.specs import spec_targets
 from eth_consensus_specs.utils import bls
 
 OPERATION_INPUTS = {
+    "proposer_slashing": ("proposer_slashing", "ProposerSlashing"),
+    "attester_slashing": ("attester_slashing", "AttesterSlashing"),
+    "attestation": ("attestation", "Attestation"),
     "deposit": ("deposit", "Deposit"),
     "bls_to_execution_change": ("address_change", "SignedBLSToExecutionChange"),
     "deposit_request": ("deposit_request", "DepositRequest"),
@@ -22,6 +25,9 @@ OPERATION_INPUTS = {
 }
 
 OPERATION_PROCESSORS = {
+    "proposer_slashing": "process_proposer_slashing",
+    "attester_slashing": "process_attester_slashing",
+    "attestation": "process_attestation",
     "deposit": "process_deposit",
     "bls_to_execution_change": "process_bls_to_execution_change",
     "deposit_request": "process_deposit_request",
@@ -31,6 +37,8 @@ OPERATION_PROCESSORS = {
 }
 
 EPOCH_PROCESSORS = {
+    "justification_and_finalization": "process_justification_and_finalization",
+    "registry_updates": "process_registry_updates",
     "pending_deposits": "process_pending_deposits",
     "pending_consolidations": "process_pending_consolidations",
     "effective_balance_updates": "process_effective_balance_updates",

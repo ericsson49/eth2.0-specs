@@ -530,9 +530,14 @@ The first materializers support:
 - `operations/deposit`
 - `operations/bls_to_execution_change`
 - `operations/deposit_request`
+- `operations/proposer_slashing`
+- `operations/attester_slashing`
+- `operations/attestation`
 - `operations/voluntary_exit`
 - `operations/withdrawal_request`
 - `operations/consolidation_request`
+- `epoch_processing/justification_and_finalization`
+- `epoch_processing/registry_updates`
 - `epoch_processing/pending_deposits`
 - `epoch_processing/pending_consolidations`
 - `epoch_processing/effective_balance_updates`

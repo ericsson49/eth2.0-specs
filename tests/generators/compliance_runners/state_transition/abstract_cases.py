@@ -23,6 +23,9 @@ class AbstractStateTransitionCase:
 
 
 HANDLER_NAMES = (
+    "proposer_slashing",
+    "attester_slashing",
+    "attestation",
     "deposit",
     "bls_to_execution_change",
     "deposit_request",
@@ -33,6 +36,7 @@ HANDLER_NAMES = (
     "pending_consolidations",
     "effective_balance_updates",
     "registry_updates",
+    "justification_and_finalization",
 )
 
 GUIDED_OPERATION_INTENTS = guided_operation_intents()
@@ -148,6 +152,12 @@ def enumerate_guided_operation_cases(
 
 
 def is_materializable_for_handler(profile: dict[str, Any], handler_name: str) -> bool:
+    if handler_name == "proposer_slashing":
+        return True
+    if handler_name == "attester_slashing":
+        return True
+    if handler_name == "attestation":
+        return True
     if handler_name == "deposit":
         return True
     if handler_name == "bls_to_execution_change":
@@ -167,7 +177,9 @@ def is_materializable_for_handler(profile: dict[str, Any], handler_name: str) ->
     if handler_name == "effective_balance_updates":
         return True
     if handler_name == "registry_updates":
-        return classify_handler(profile) == "registry_updates"
+        return True
+    if handler_name == "justification_and_finalization":
+        return True
     raise ValueError(f"Unknown handler: {handler_name}")
 
 

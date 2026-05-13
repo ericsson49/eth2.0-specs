@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
+from eth_consensus_specs.test.helpers.attestations import get_valid_attestation
+from eth_consensus_specs.test.helpers.attester_slashings import (
+    get_valid_attester_slashing_by_indices,
+)
 from eth_consensus_specs.test.helpers.bls_to_execution_changes import get_signed_address_change
 from eth_consensus_specs.test.helpers.deposits import (
     prepare_pending_deposit,
     prepare_state_and_deposit,
 )
 from eth_consensus_specs.test.helpers.keys import privkeys, pubkeys
+from eth_consensus_specs.test.helpers.proposer_slashings import get_valid_proposer_slashing
+from eth_consensus_specs.test.helpers.state import transition_to
 from eth_consensus_specs.test.helpers.voluntary_exits import sign_voluntary_exit
 from eth_consensus_specs.test.helpers.withdrawals import (
     set_compounding_withdrawal_credential_with_balance,
@@ -27,6 +33,9 @@ OPERATIONS_RUNNER_NAME = "operations"
 EPOCH_PROCESSING_RUNNER_NAME = "epoch_processing"
 SUITE_NAME = "minizinc_abstract"
 MATERIALIZED_HANDLER_NAMES = (
+    "proposer_slashing",
+    "attester_slashing",
+    "attestation",
     "deposit",
     "bls_to_execution_change",
     "deposit_request",
@@ -36,6 +45,8 @@ MATERIALIZED_HANDLER_NAMES = (
     "pending_deposits",
     "pending_consolidations",
     "effective_balance_updates",
+    "registry_updates",
+    "justification_and_finalization",
 )
 VALIDATOR_INDEX = 0
 TARGET_VALIDATOR_INDEX = 1
@@ -74,6 +85,30 @@ def materialize_case(
         suite_name=SUITE_NAME,
         case_name=abstract_case.case_name,
     )
+    if abstract_case.handler_name == "proposer_slashing":
+        return materialize_proposer_slashing(
+            spec,
+            state,
+            test_case,
+            abstract_case.profile,
+            invalid_operation=invalid_operation,
+        )
+    if abstract_case.handler_name == "attester_slashing":
+        return materialize_attester_slashing(
+            spec,
+            state,
+            test_case,
+            abstract_case.profile,
+            invalid_operation=invalid_operation,
+        )
+    if abstract_case.handler_name == "attestation":
+        return materialize_attestation(
+            spec,
+            state,
+            test_case,
+            abstract_case.profile,
+            invalid_operation=invalid_operation,
+        )
     if abstract_case.handler_name == "deposit":
         return materialize_deposit(
             spec,
@@ -136,11 +171,125 @@ def materialize_case(
             test_case,
             abstract_case.profile,
         )
-    return materialize_effective_balance_updates(
-        spec,
-        state,
-        test_case,
-        abstract_case.profile,
+    if abstract_case.handler_name == "effective_balance_updates":
+        return materialize_effective_balance_updates(
+            spec,
+            state,
+            test_case,
+            abstract_case.profile,
+        )
+    if abstract_case.handler_name == "registry_updates":
+        return materialize_registry_updates(spec, state, test_case, abstract_case.profile)
+    return materialize_justification_and_finalization(
+        spec, state, test_case, abstract_case.profile
+    )
+
+
+def materialize_proposer_slashing(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+    *,
+    invalid_operation: bool,
+) -> TestCaseResult:
+    proposer_slashing = prepare_state_for_proposer_slashing(spec, state, profile)
+    if invalid_operation:
+        proposer_slashing.signed_header_2.message.slot += 1
+
+    pre_state = state.copy()
+    case_parts = operation_case_parts(pre_state, "proposer_slashing", proposer_slashing)
+    try:
+        with_bls_setting(profile, lambda: spec.process_proposer_slashing(state, proposer_slashing))
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
+def materialize_attester_slashing(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+    *,
+    invalid_operation: bool,
+) -> TestCaseResult:
+    attester_slashing = prepare_state_for_attester_slashing(spec, state, profile)
+    if invalid_operation:
+        attester_slashing.attestation_2.data = attester_slashing.attestation_1.data.copy()
+
+    pre_state = state.copy()
+    case_parts = operation_case_parts(pre_state, "attester_slashing", attester_slashing)
+    try:
+        with_bls_setting(profile, lambda: spec.process_attester_slashing(state, attester_slashing))
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
+def materialize_attestation(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+    *,
+    invalid_operation: bool,
+) -> TestCaseResult:
+    attestation = prepare_state_for_attestation(spec, state, profile)
+    if invalid_operation:
+        attestation.data.slot = state.slot
+
+    pre_state = state.copy()
+    case_parts = operation_case_parts(pre_state, "attestation", attestation)
+    try:
+        with_bls_setting(profile, lambda: spec.process_attestation(state, attestation))
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
     )
 
 
@@ -208,8 +357,74 @@ def materialize_effective_balance_updates(
     )
 
 
+def materialize_registry_updates(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_registry_updates(spec, state, profile)
+
+    pre_state = state.copy()
+    case_parts = [TestCasePart(("pre", "ssz", serialize(pre_state)))]
+    try:
+        spec.process_registry_updates(state)
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
+def materialize_justification_and_finalization(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_justification_and_finalization(spec, state, profile)
+
+    pre_state = state.copy()
+    case_parts = [TestCasePart(("pre", "ssz", serialize(pre_state)))]
+    try:
+        spec.process_justification_and_finalization(state)
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
 def runner_name_for_handler(handler_name: str) -> str:
     if handler_name in (
+        "justification_and_finalization",
+        "registry_updates",
         "pending_deposits",
         "pending_consolidations",
         "effective_balance_updates",
@@ -517,6 +732,119 @@ def with_bls_setting(profile: dict[str, Any], fn):
         return fn()
     finally:
         bls.bls_active = old_bls_active
+
+
+def prepare_state_for_proposer_slashing(spec, state, profile: dict[str, Any]):
+    transition_to(spec, state, spec.compute_start_slot_at_epoch(spec.Epoch(2)))
+    proposer_index = VALIDATOR_INDEX
+    prepare_slashable_validator(spec, state, proposer_index)
+    proposer_slashing = get_valid_proposer_slashing(
+        spec,
+        state,
+        slashed_index=proposer_index,
+        signed_1=True,
+        signed_2=True,
+    )
+
+    intent = profile.get("guide_intent")
+    if intent in (None, "success"):
+        return proposer_slashing
+    if intent == "same_header":
+        proposer_slashing.signed_header_2.message = proposer_slashing.signed_header_1.message.copy()
+    elif intent == "proposer_mismatch":
+        proposer_slashing.signed_header_2.message.proposer_index = spec.ValidatorIndex(
+            proposer_index + 1
+        )
+    elif intent == "already_slashed":
+        state.validators[proposer_index].slashed = True
+    elif intent == "bad_signature":
+        profile["bls_setting"] = 1
+        proposer_slashing.signed_header_2.signature = spec.BLSSignature(b"\x42" * 96)
+    else:
+        raise ValueError(f"Unsupported proposer slashing guide intent: {intent}")
+    return proposer_slashing
+
+
+def prepare_state_for_attester_slashing(spec, state, profile: dict[str, Any]):
+    transition_to(spec, state, spec.compute_start_slot_at_epoch(spec.Epoch(2)))
+    prepare_slashable_validator(spec, state, VALIDATOR_INDEX)
+    prepare_slashable_validator(spec, state, TARGET_VALIDATOR_INDEX)
+
+    intent = profile.get("guide_intent")
+    indices_1 = [spec.ValidatorIndex(VALIDATOR_INDEX)]
+    indices_2 = [spec.ValidatorIndex(VALIDATOR_INDEX)]
+    if intent == "no_overlap":
+        indices_2 = [spec.ValidatorIndex(TARGET_VALIDATOR_INDEX)]
+
+    attester_slashing = get_valid_attester_slashing_by_indices(
+        spec,
+        state,
+        indices_1=indices_1,
+        indices_2=indices_2,
+        slot=spec.Slot(state.slot - 1),
+        signed_1=True,
+        signed_2=True,
+    )
+
+    if intent in (None, "success", "no_overlap"):
+        return attester_slashing
+    if intent == "not_slashable_data":
+        attester_slashing.attestation_2.data = attester_slashing.attestation_1.data.copy()
+        return attester_slashing
+    if intent == "already_slashed":
+        state.validators[VALIDATOR_INDEX].slashed = True
+        return attester_slashing
+    if intent == "bad_signature":
+        profile["bls_setting"] = 1
+        attester_slashing.attestation_2.signature = spec.BLSSignature(b"\x42" * 96)
+        return attester_slashing
+    raise ValueError(f"Unsupported attester slashing guide intent: {intent}")
+
+
+def prepare_state_for_attestation(spec, state, profile: dict[str, Any]):
+    transition_to(spec, state, spec.compute_start_slot_at_epoch(spec.Epoch(2)) + 1)
+    slot = spec.Slot(state.slot - 1)
+    if profile.get("guide_intent") == "previous_epoch_success":
+        slot = spec.Slot(spec.compute_start_slot_at_epoch(spec.Epoch(2)) - 1)
+    attestation = get_valid_attestation(
+        spec,
+        state,
+        slot=slot,
+        signed=True,
+    )
+
+    intent = profile.get("guide_intent")
+    if intent in (None, "success", "previous_epoch_success"):
+        return attestation
+    if intent == "future_slot":
+        attestation.data.slot = state.slot
+    elif intent == "wrong_target_epoch":
+        attestation.data.target.epoch = spec.Epoch(attestation.data.target.epoch + 1)
+    elif intent == "bad_committee_index":
+        attestation.committee_bits = spec.Bitvector[spec.MAX_COMMITTEES_PER_SLOT](
+            [False] * spec.MAX_COMMITTEES_PER_SLOT
+        )
+        attestation.committee_bits[spec.MAX_COMMITTEES_PER_SLOT - 1] = True
+    elif intent == "empty_aggregation":
+        for index in range(len(attestation.aggregation_bits)):
+            attestation.aggregation_bits[index] = False
+    elif intent == "bad_signature":
+        profile["bls_setting"] = 1
+        attestation.signature = spec.BLSSignature(b"\x42" * 96)
+    else:
+        raise ValueError(f"Unsupported attestation guide intent: {intent}")
+    return attestation
+
+
+def prepare_slashable_validator(spec, state, validator_index: int) -> None:
+    validator = state.validators[validator_index]
+    validator.slashed = False
+    validator.activation_eligibility_epoch = spec.Epoch(0)
+    validator.activation_epoch = spec.Epoch(0)
+    validator.exit_epoch = spec.FAR_FUTURE_EPOCH
+    validator.withdrawable_epoch = spec.FAR_FUTURE_EPOCH
+    validator.effective_balance = spec.MIN_ACTIVATION_BALANCE
+    state.balances[validator_index] = spec.MIN_ACTIVATION_BALANCE
 
 
 def prepare_state_for_deposit(spec, state, profile: dict[str, Any]):
@@ -1327,6 +1655,153 @@ def prepare_state_for_effective_balance_updates(spec, state, profile: dict[str, 
         )
     else:
         raise ValueError(f"Unsupported effective balance updates guide intent: {intent}")
+
+
+def prepare_state_for_registry_updates(spec, state, profile: dict[str, Any]) -> None:
+    current_epoch = spec.Epoch(max(2, spec.get_current_epoch(state)))
+    state.slot = spec.compute_start_slot_at_epoch(current_epoch)
+    index = VALIDATOR_INDEX
+    validator = state.validators[index]
+    validator.slashed = False
+    validator.activation_eligibility_epoch = spec.Epoch(0)
+    validator.activation_epoch = spec.Epoch(0)
+    validator.exit_epoch = spec.FAR_FUTURE_EPOCH
+    validator.withdrawable_epoch = spec.FAR_FUTURE_EPOCH
+    set_eth1_withdrawal_credential_with_balance(
+        spec,
+        state,
+        index,
+        effective_balance=spec.MIN_ACTIVATION_BALANCE,
+        balance=spec.MIN_ACTIVATION_BALANCE,
+        address=SOURCE_ADDRESS,
+    )
+
+    intent = profile.get("guide_intent")
+    if intent in (None, "no_change"):
+        return
+    if intent == "activation_queue":
+        validator.activation_eligibility_epoch = spec.FAR_FUTURE_EPOCH
+        validator.activation_epoch = spec.FAR_FUTURE_EPOCH
+    elif intent == "ejection":
+        validator.effective_balance = spec.config.EJECTION_BALANCE
+        state.balances[index] = spec.config.EJECTION_BALANCE
+    elif intent == "activation":
+        validator.activation_eligibility_epoch = spec.Epoch(0)
+        validator.activation_epoch = spec.FAR_FUTURE_EPOCH
+        state.finalized_checkpoint.epoch = current_epoch
+    else:
+        raise ValueError(f"Unsupported registry updates guide intent: {intent}")
+
+
+def prepare_state_for_justification_and_finalization(
+    spec,
+    state,
+    profile: dict[str, Any],
+) -> None:
+    intent = profile.get("guide_intent")
+    if intent == "genesis_skip":
+        state.slot = spec.compute_start_slot_at_epoch(spec.Epoch(1))
+        return
+    if intent == "finalize_234":
+        prepare_state_for_finalization_pattern(
+            spec,
+            state,
+            current_epoch=spec.Epoch(5),
+            previous_justified_epoch=spec.Epoch(2),
+            current_justified_epoch=spec.Epoch(3),
+            pre_shift_justification_bits=[1, 2],
+            supported_epochs=[spec.Epoch(4)],
+        )
+        return
+    if intent == "finalize_23":
+        prepare_state_for_finalization_pattern(
+            spec,
+            state,
+            current_epoch=spec.Epoch(4),
+            previous_justified_epoch=spec.Epoch(2),
+            current_justified_epoch=spec.Epoch(2),
+            pre_shift_justification_bits=[1],
+            supported_epochs=[spec.Epoch(3)],
+        )
+        return
+    if intent == "finalize_123":
+        prepare_state_for_finalization_pattern(
+            spec,
+            state,
+            current_epoch=spec.Epoch(6),
+            previous_justified_epoch=spec.Epoch(1),
+            current_justified_epoch=spec.Epoch(4),
+            pre_shift_justification_bits=[1],
+            supported_epochs=[spec.Epoch(5), spec.Epoch(6)],
+        )
+        return
+
+    current_epoch = spec.Epoch(3)
+    transition_to(spec, state, spec.compute_start_slot_at_epoch(current_epoch) + 1)
+    previous_epoch = spec.get_previous_epoch(state)
+    current_root = spec.get_block_root(state, current_epoch)
+    previous_root = spec.get_block_root(state, previous_epoch)
+    old_current = spec.Checkpoint(epoch=spec.Epoch(1), root=previous_root)
+    state.previous_justified_checkpoint = old_current
+    state.current_justified_checkpoint = old_current
+    state.justification_bits = spec.Bitvector[spec.JUSTIFICATION_BITS_LENGTH]()
+
+    if intent in (None, "current_justified", "finalize_current"):
+        set_epoch_target_participation(spec, state, current_epoch)
+    elif intent == "previous_justified":
+        set_epoch_target_participation(spec, state, previous_epoch)
+    elif intent == "poor_support":
+        state.current_epoch_participation[VALIDATOR_INDEX] = spec.ParticipationFlags(
+            2**spec.TIMELY_TARGET_FLAG_INDEX
+        )
+    else:
+        raise ValueError(f"Unsupported justification/finalization guide intent: {intent}")
+
+    if intent == "finalize_current":
+        state.justification_bits[0] = True
+        state.current_justified_checkpoint = spec.Checkpoint(
+            epoch=spec.Epoch(2),
+            root=current_root,
+        )
+
+
+def set_epoch_target_participation(spec, state, epoch) -> None:
+    if epoch == spec.get_current_epoch(state):
+        participation = state.current_epoch_participation
+    elif epoch == spec.get_previous_epoch(state):
+        participation = state.previous_epoch_participation
+    else:
+        raise ValueError(f"Cannot set participation for epoch {epoch}")
+
+    target_flag = spec.ParticipationFlags(2**spec.TIMELY_TARGET_FLAG_INDEX)
+    for index in spec.get_active_validator_indices(state, epoch):
+        participation[index] |= target_flag
+
+
+def prepare_state_for_finalization_pattern(
+    spec,
+    state,
+    *,
+    current_epoch,
+    previous_justified_epoch,
+    current_justified_epoch,
+    pre_shift_justification_bits: list[int],
+    supported_epochs: list,
+) -> None:
+    transition_to(spec, state, spec.compute_start_slot_at_epoch(current_epoch) + 1)
+    state.previous_justified_checkpoint = spec.Checkpoint(
+        epoch=previous_justified_epoch,
+        root=spec.get_block_root(state, previous_justified_epoch),
+    )
+    state.current_justified_checkpoint = spec.Checkpoint(
+        epoch=current_justified_epoch,
+        root=spec.get_block_root(state, current_justified_epoch),
+    )
+    state.justification_bits = spec.Bitvector[spec.JUSTIFICATION_BITS_LENGTH]()
+    for bit_index in pre_shift_justification_bits:
+        state.justification_bits[bit_index] = True
+    for epoch in supported_epochs:
+        set_epoch_target_participation(spec, state, epoch)
 
 
 def profile_epoch(spec, current_epoch, relation: str):
