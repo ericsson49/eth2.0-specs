@@ -588,3 +588,13 @@ focused report targets. It also infers target functions, guide intents, and
 expected outcomes from `test_ontology.yaml`, then writes `target_coverage.txt`
 and `semantic_coverage.txt`. Use `--ontology` to provide an explicit ontology
 YAML.
+
+For reproducible suite generation, use a checked-in suite config:
+
+```bash
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage
+```
+
+The default guided Electra operations profile lives in
+`suite_configs/electra_operations_guided.yaml` and fixes the fork, preset,
+handlers, generation mode, output directories, and coverage settings.
