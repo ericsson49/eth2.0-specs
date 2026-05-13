@@ -49,6 +49,8 @@ def get_test_case(spec, test_dir: Path, handler: str):
 def decode_operation(spec, test_dir: Path, handler: str):
     if handler == "withdrawal_request":
         return decode_file(spec, test_dir, "withdrawal_request", spec.WithdrawalRequest)
+    if handler == "consolidation_request":
+        return decode_file(spec, test_dir, "consolidation_request", spec.ConsolidationRequest)
     raise ValueError(f"Unsupported operations handler: {handler}")
 
 
@@ -73,6 +75,9 @@ def run_test(test_info: StateTransitionTestInfo):
     if handler == "withdrawal_request":
         run_withdrawal_request_case(spec, state, test_case["operation"], expected_post)
         return
+    if handler == "consolidation_request":
+        run_consolidation_request_case(spec, state, test_case["operation"], expected_post)
+        return
 
     raise ValueError(f"Unsupported operations handler: {handler}")
 
@@ -83,6 +88,17 @@ def run_withdrawal_request_case(spec, state, withdrawal_request, expected_post):
         return
 
     spec.process_withdrawal_request(state, withdrawal_request)
+    assert state == expected_post
+
+
+def run_consolidation_request_case(spec, state, consolidation_request, expected_post):
+    if expected_post is None:
+        expect_assertion_error(
+            lambda: spec.process_consolidation_request(state, consolidation_request)
+        )
+        return
+
+    spec.process_consolidation_request(state, consolidation_request)
     assert state == expected_post
 
 

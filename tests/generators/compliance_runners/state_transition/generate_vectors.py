@@ -10,8 +10,8 @@ from tests.generators.compliance_runners.gen_base.output import dump_test_case_r
 from tests.generators.compliance_runners.gen_base.pytest_support import configure_generator_context
 from tests.infra.dumper import Dumper
 
-from .abstract_cases import enumerate_matching_abstract_cases, select_abstract_cases
-from .materializers import materialize_case, UnsupportedProfileError
+from .abstract_cases import enumerate_materializable_operation_cases, select_abstract_cases
+from .materializers import materialize_case, MATERIALIZED_HANDLER_NAMES, UnsupportedProfileError
 
 configure_generator_context()
 
@@ -32,7 +32,10 @@ def main() -> None:
     parser.add_argument(
         "--handler",
         action="append",
-        help="Handler to generate. Defaults to withdrawal_request. Can be repeated.",
+        help=(
+            "Handler to generate. Defaults to withdrawal_request. Can be repeated. "
+            "Use 'all' for every materialized operation handler."
+        ),
     )
     parser.add_argument("--keep-existing", action="store_true")
     args = parser.parse_args()
@@ -41,11 +44,20 @@ def main() -> None:
         output_dir=args.output,
         fork_name=args.fork,
         preset_name=args.preset,
-        handlers=args.handler or ["withdrawal_request"],
+        handlers=normalize_handlers(args.handler),
         per_handler_limit=args.per_handler_limit,
         changed_only=args.changed_only,
         keep_existing=args.keep_existing,
     )
+
+
+def normalize_handlers(handlers: list[str] | None) -> list[str]:
+    requested_handlers = handlers or ["withdrawal_request"]
+    if "all" in requested_handlers:
+        requested_handlers = list(MATERIALIZED_HANDLER_NAMES) + [
+            handler for handler in requested_handlers if handler != "all"
+        ]
+    return list(dict.fromkeys(requested_handlers))
 
 
 def generate_vectors(
@@ -60,7 +72,7 @@ def generate_vectors(
 ) -> None:
     dumper = Dumper()
     if changed_only:
-        abstract_cases = enumerate_matching_abstract_cases(handlers=handlers)
+        abstract_cases = enumerate_materializable_operation_cases(handlers=handlers)
     else:
         abstract_cases = select_abstract_cases(
             per_handler_limit=per_handler_limit,

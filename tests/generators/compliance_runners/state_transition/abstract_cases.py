@@ -85,6 +85,30 @@ def enumerate_matching_abstract_cases(
             yield make_abstract_case(handler_name, index, profile)
 
 
+def enumerate_materializable_operation_cases(
+    handlers: Iterable[str],
+) -> Iterable[AbstractStateTransitionCase]:
+    requested_handlers = tuple(handlers)
+    unknown_handlers = set(requested_handlers) - set(HANDLER_NAMES)
+    if unknown_handlers:
+        raise ValueError(f"Unknown handlers: {sorted(unknown_handlers)}")
+
+    for index, profile in enumerate(solve_validator_state_profiles()):
+        for handler_name in requested_handlers:
+            if is_materializable_for_handler(profile, handler_name):
+                yield make_abstract_case(handler_name, index, profile)
+
+
+def is_materializable_for_handler(profile: dict[str, Any], handler_name: str) -> bool:
+    if handler_name == "withdrawal_request":
+        return profile["withdrawal_credential_type"] in ("ETH1", "COMP")
+    if handler_name == "consolidation_request":
+        return profile["withdrawal_credential_type"] in ("ETH1", "COMP")
+    if handler_name == "registry_updates":
+        return classify_handler(profile) == "registry_updates"
+    raise ValueError(f"Unknown handler: {handler_name}")
+
+
 def make_abstract_case(
     handler_name: str,
     solution_index: int,

@@ -525,11 +525,16 @@ The current output is intentionally abstract YAML. The next implementation step
 is to materialize these profiles into concrete `pre`, operation input, and
 `post` SSZ parts for the `operations` runner.
 
-The first materializer supports `operations/withdrawal_request`:
+The first materializers support:
+
+- `operations/withdrawal_request`
+- `operations/consolidation_request`
 
 ```bash
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5 --changed-only
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --handler consolidation_request --per-handler-limit 5 --changed-only
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --handler all --per-handler-limit 5 --changed-only
 ```
 
 It writes standard compliance-style operation cases:
@@ -539,7 +544,7 @@ It writes standard compliance-style operation cases:
   manifest.yaml
   meta.yaml
   pre.ssz_snappy
-  withdrawal_request.ssz_snappy
+  <operation>.ssz_snappy
   post.ssz_snappy
 ```
 

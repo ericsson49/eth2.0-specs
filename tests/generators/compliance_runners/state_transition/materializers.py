@@ -17,8 +17,14 @@ from .abstract_cases import AbstractStateTransitionCase
 
 GENERATOR_NAME = "operations"
 SUITE_NAME = "minizinc_abstract"
+MATERIALIZED_HANDLER_NAMES = (
+    "withdrawal_request",
+    "consolidation_request",
+)
 VALIDATOR_INDEX = 0
+TARGET_VALIDATOR_INDEX = 1
 SOURCE_ADDRESS = b"\x22" * 20
+TARGET_ADDRESS = b"\x33" * 20
 
 
 class UnsupportedProfileError(ValueError):
@@ -33,7 +39,7 @@ def materialize_case(
     fork_name: str,
     preset_name: str,
 ) -> TestCaseResult:
-    if abstract_case.handler_name != "withdrawal_request":
+    if abstract_case.handler_name not in MATERIALIZED_HANDLER_NAMES:
         raise UnsupportedProfileError(
             f"Unsupported state-transition handler: {abstract_case.handler_name}"
         )
@@ -46,7 +52,9 @@ def materialize_case(
         suite_name=SUITE_NAME,
         case_name=abstract_case.case_name,
     )
-    return materialize_withdrawal_request(spec, state, test_case, abstract_case.profile)
+    if abstract_case.handler_name == "withdrawal_request":
+        return materialize_withdrawal_request(spec, state, test_case, abstract_case.profile)
+    return materialize_consolidation_request(spec, state, test_case, abstract_case.profile)
 
 
 def materialize_withdrawal_request(
@@ -69,6 +77,33 @@ def materialize_withdrawal_request(
     case_parts = [
         TestCasePart(("pre", "ssz", serialize(pre_state))),
         TestCasePart(("withdrawal_request", "ssz", serialize(withdrawal_request))),
+        TestCasePart(("post", "ssz", serialize(state))),
+    ]
+    return TestCaseResult(test_case=test_case, meta=meta, case_parts=case_parts)
+
+
+def materialize_consolidation_request(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    source_index = VALIDATOR_INDEX
+    target_index = TARGET_VALIDATOR_INDEX
+    prepare_state_for_profile(spec, state, source_index, profile)
+    prepare_target_for_consolidation(spec, state, target_index)
+    consolidation_request = build_consolidation_request(spec, state, source_index, target_index)
+
+    pre_state = state.copy()
+    spec.process_consolidation_request(state, consolidation_request)
+
+    meta = {
+        "description": "MiniZinc-generated abstract validator-state profile",
+        "profile": profile,
+    }
+    case_parts = [
+        TestCasePart(("pre", "ssz", serialize(pre_state))),
+        TestCasePart(("consolidation_request", "ssz", serialize(consolidation_request))),
         TestCasePart(("post", "ssz", serialize(state))),
     ]
     return TestCaseResult(test_case=test_case, meta=meta, case_parts=case_parts)
@@ -160,6 +195,33 @@ def build_withdrawal_request(spec, state, validator_index: int, profile: dict[st
         source_address=SOURCE_ADDRESS,
         validator_pubkey=state.validators[validator_index].pubkey,
         amount=amount,
+    )
+
+
+def prepare_target_for_consolidation(spec, state, target_index: int) -> None:
+    current_epoch = spec.get_current_epoch(state)
+    target = state.validators[target_index]
+    target.slashed = False
+    target.activation_eligibility_epoch = spec.Epoch(0)
+    target.activation_epoch = spec.Epoch(0)
+    target.exit_epoch = spec.FAR_FUTURE_EPOCH
+    target.withdrawable_epoch = spec.FAR_FUTURE_EPOCH
+    assert spec.is_active_validator(target, current_epoch)
+    set_compounding_withdrawal_credential_with_balance(
+        spec,
+        state,
+        target_index,
+        effective_balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+        balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+        address=TARGET_ADDRESS,
+    )
+
+
+def build_consolidation_request(spec, state, source_index: int, target_index: int):
+    return spec.ConsolidationRequest(
+        source_address=SOURCE_ADDRESS,
+        source_pubkey=state.validators[source_index].pubkey,
+        target_pubkey=state.validators[target_index].pubkey,
     )
 
 
