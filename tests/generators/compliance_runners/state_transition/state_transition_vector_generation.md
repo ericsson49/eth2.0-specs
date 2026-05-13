@@ -524,3 +524,27 @@ uv run --extra test python -m tests.generators.compliance_runners.state_transiti
 The current output is intentionally abstract YAML. The next implementation step
 is to materialize these profiles into concrete `pre`, operation input, and
 `post` SSZ parts for the `operations` runner.
+
+The first materializer supports `operations/withdrawal_request`:
+
+```bash
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5 --changed-only
+```
+
+It writes standard compliance-style operation cases:
+
+```text
+<output>/<preset>/<fork>/operations/withdrawal_request/minizinc_abstract/<case>/
+  manifest.yaml
+  meta.yaml
+  pre.ssz_snappy
+  withdrawal_request.ssz_snappy
+  post.ssz_snappy
+```
+
+The generated vectors can be checked against the pyspec with:
+
+```bash
+uv run --extra test pytest tests/generators/compliance_runners/state_transition/runner/test_run.py --test-dir /tmp/state-transition-vectors
+```
