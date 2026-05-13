@@ -101,6 +101,7 @@ def main() -> None:
             test_dir=output_dir,
             ontology_path=Path(ontology_path) if ontology_path else None,
             coverage_dir=coverage_output if args.coverage or coverage_output.exists() else None,
+            distribution=generation_config.get("distribution"),
         )
         print(summary)
         if args.summary_output is not None:
@@ -133,6 +134,7 @@ def generate_from_config(generation_config: dict, output_dir: Path) -> None:
         invalid_only=generation_config.get("invalid_only", False),
         guided=generation_config.get("guided", False),
         keep_existing=keep_existing,
+        distribution=generation_config.get("distribution"),
     )
 
 

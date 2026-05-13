@@ -8,6 +8,7 @@ from typing import Any
 
 from .measure_coverage import load_case_metadata
 from .ontology import intent_outcomes_by_runner, load_test_ontology, target_functions_by_runner
+from .suite_config import read_yaml, resolve_suite_config_path
 
 
 def main() -> None:
@@ -26,6 +27,10 @@ def main() -> None:
         help="YAML ontology declaring target functions, guide intents, and expected outcomes.",
     )
     parser.add_argument(
+        "--suite",
+        help="Optional suite config name or path. Used for distribution quota reporting.",
+    )
+    parser.add_argument(
         "--coverage-dir",
         type=Path,
         help="Directory containing coverage reports written by measure_coverage.",
@@ -37,10 +42,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    suite_config = read_yaml(resolve_suite_config_path(args.suite)) if args.suite else None
+    coverage_ontology = suite_config.get("coverage", {}).get("ontology") if suite_config else None
+    ontology_path = args.ontology or (Path(coverage_ontology) if coverage_ontology else None)
     summary = summarize_suite(
         test_dir=args.test_dir,
-        ontology_path=args.ontology,
+        ontology_path=ontology_path,
         coverage_dir=args.coverage_dir,
+        distribution=suite_config.get("generation", {}).get("distribution")
+        if suite_config
+        else None,
     )
     print(summary)
     if args.output is not None:
@@ -53,6 +64,7 @@ def summarize_suite(
     test_dir: Path,
     ontology_path: Path | None = None,
     coverage_dir: Path | None = None,
+    distribution: dict[str, dict[str, int]] | None = None,
 ) -> str:
     ontology = load_test_ontology(ontology_path)
     cases = load_rich_case_metadata(test_dir)
@@ -63,6 +75,8 @@ def summarize_suite(
     lines.extend(format_suite_shape(cases))
     lines.append("")
     lines.extend(format_outcome_counts(cases))
+    lines.append("")
+    lines.extend(format_distribution(cases, distribution))
     lines.append("")
     lines.extend(format_ontology_fit(cases, intent_outcomes, target_functions))
     lines.append("")
@@ -106,6 +120,30 @@ def format_outcome_counts(cases: list[dict[str, Any]]) -> list[str]:
             counts = Counter(case["outcome"] for case in handler_cases)
             summary = ", ".join(f"{name}: {counts[name]}" for name in sorted(counts))
             lines.append(f"  {handler}: {summary}")
+    return lines
+
+
+def format_distribution(
+    cases: list[dict[str, Any]],
+    distribution: dict[str, dict[str, int]] | None,
+) -> list[str]:
+    lines = ["Distribution Quotas", "-------------------"]
+    if not distribution:
+        lines.append("not configured")
+        return lines
+
+    labels = {
+        "outcomes": Counter(case["outcome"] for case in cases),
+        "runners": Counter(case["runner"] for case in cases),
+        "handlers": Counter(case["handler"] for case in cases),
+    }
+    for dimension, quotas in sorted(distribution.items()):
+        lines.append(dimension)
+        for name, requested in sorted(quotas.items()):
+            actual = labels.get(dimension, Counter())[name]
+            unmet = max(0, int(requested) - actual)
+            status = "ok" if unmet == 0 else f"unmet {unmet}"
+            lines.append(f"  {name}: {actual}/{requested} ({status})")
     return lines
 
 

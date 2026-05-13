@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import shutil
+from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from eth_consensus_specs.test.context import spec_state_test, with_electra_and_later
@@ -94,12 +96,14 @@ def generate_vectors(
     invalid_only: bool,
     guided: bool,
     keep_existing: bool,
+    distribution: dict[str, dict[str, int]] | None = None,
 ) -> None:
     selected_filters = sum([changed_only, unchanged_only, invalid_only])
     if selected_filters > 1:
         raise ValueError("--changed-only, --unchanged-only, and --invalid-only are exclusive")
 
     dumper = Dumper()
+    distribution_tracker = DistributionTracker.from_config(distribution)
     if guided:
         abstract_cases = enumerate_guided_operation_cases(handlers=handlers)
     elif changed_only or invalid_only:
@@ -128,11 +132,16 @@ def generate_vectors(
             continue
         if invalid_only and is_operation_valid(result):
             continue
+        if not distribution_tracker.accepts(result):
+            continue
         result.test_case.set_output_dir(str(output_dir))
         if result.test_case.dir.exists() and not keep_existing:
             shutil.rmtree(result.test_case.dir)
         dump_test_case_result(result, dumper)
+        distribution_tracker.record(result)
         written_counts[abstract_case.handler_name] += 1
+        if distribution_tracker.satisfied:
+            return
         if all(count >= per_handler_limit for count in written_counts.values()):
             return
 
@@ -184,6 +193,93 @@ def is_unchanged_post_state(result) -> bool:
 
 def is_operation_valid(result) -> bool:
     return bool(result.meta["operation_valid"])
+
+
+def classify_result_outcome(result) -> str:
+    if not is_operation_valid(result):
+        return "assertion_failure"
+    if is_changed_post_state(result):
+        return "changed"
+    return "no_change"
+
+
+@dataclass
+class DistributionTracker:
+    quotas: dict[str, dict[str, int]] = field(default_factory=dict)
+    counts: dict[str, Counter] = field(default_factory=dict)
+
+    @classmethod
+    def from_config(cls, config: dict[str, dict[str, int]] | None) -> DistributionTracker:
+        if not config:
+            return cls()
+        quotas = {
+            dimension: {str(name): int(limit) for name, limit in values.items()}
+            for dimension, values in config.items()
+        }
+        validate_distribution_quotas(quotas)
+        return cls(
+            quotas=quotas,
+            counts={dimension: Counter() for dimension in quotas},
+        )
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.quotas)
+
+    @property
+    def satisfied(self) -> bool:
+        if not self.enabled:
+            return False
+        return all(
+            self.counts[dimension][name] >= limit
+            for dimension, dimension_quotas in self.quotas.items()
+            for name, limit in dimension_quotas.items()
+        )
+
+    def accepts(self, result) -> bool:
+        if not self.enabled:
+            return True
+        labels = distribution_labels(result)
+        for dimension, dimension_quotas in self.quotas.items():
+            label = labels[dimension]
+            if label not in dimension_quotas:
+                return False
+            if self.counts[dimension][label] >= dimension_quotas[label]:
+                return False
+        return True
+
+    def record(self, result) -> None:
+        if not self.enabled:
+            return
+        labels = distribution_labels(result)
+        for dimension in self.quotas:
+            self.counts[dimension][labels[dimension]] += 1
+
+
+def validate_distribution_quotas(quotas: dict[str, dict[str, int]]) -> None:
+    supported_dimensions = {"outcomes", "runners", "handlers"}
+    unknown_dimensions = set(quotas) - supported_dimensions
+    if unknown_dimensions:
+        raise ValueError(f"Unsupported distribution dimensions: {sorted(unknown_dimensions)}")
+
+    for dimension, dimension_quotas in quotas.items():
+        if not dimension_quotas:
+            raise ValueError(f"Distribution dimension {dimension!r} must not be empty")
+        negative = {
+            name: limit
+            for name, limit in dimension_quotas.items()
+            if limit < 0
+        }
+        if negative:
+            raise ValueError(f"Distribution quotas must be non-negative: {negative}")
+
+
+def distribution_labels(result) -> dict[str, str]:
+    return {
+        "outcomes": classify_result_outcome(result),
+        "runners": result.test_case.runner_name,
+        "handlers": result.test_case.handler_name,
+    }
 
 
 if __name__ == "__main__":

@@ -621,11 +621,32 @@ When `keep_existing` is false, the suite runner removes the configured vector
 output directory before regenerating, preventing stale cases from affecting
 validation or semantic coverage reports.
 
+Suite configs can optionally add deterministic distribution quotas. The
+generator still materializes candidates in stable order, but only writes cases
+that fit every configured dimension:
+
+```yaml
+generation:
+  distribution:
+    outcomes:
+      changed: 12
+      no_change: 12
+      assertion_failure: 12
+    runners:
+      operations: 24
+      epoch_processing: 12
+```
+
+Supported dimensions are `outcomes`, `runners`, and `handlers`. Within a
+configured dimension, omitted labels are excluded. If candidates run out before
+a quota is filled, generation still succeeds and `run_suite --summary` reports
+the unmet quota.
+
 The suite health summary can also be run directly over an existing generated
 suite:
 
 ```bash
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.summarize_suite --test-dir /tmp/state-transition-vectors --coverage-dir /tmp/state-transition-coverage
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.summarize_suite --test-dir /tmp/state-transition-vectors --coverage-dir /tmp/state-transition-coverage --suite electra_operations_guided
 ```
 
 It reports generated handlers, intents per handler, missing ontology intents,
