@@ -9,9 +9,15 @@ import pytest
 from coverage import Coverage
 from ruamel.yaml import YAML
 
+from .interaction_coverage import (
+    add_stage_dimension,
+    format_interaction_report,
+    interaction_settings,
+)
 from .ontology import (
     intent_outcomes_by_runner,
     load_test_ontology,
+    stage_handlers,
     target_functions_by_runner,
 )
 
@@ -114,6 +120,8 @@ def measure_coverage(
     ontology = load_test_ontology(ontology_path)
     target_functions = resolve_target_functions(test_dirs, target_config, ontology)
     intent_outcomes = infer_suite_intent_outcomes(test_dirs, ontology)
+    stages = stage_handlers(ontology)
+    interaction_dimensions, interaction_max_order = interaction_settings(ontology)
 
     cov = Coverage(
         branch=True,
@@ -157,6 +165,14 @@ def measure_coverage(
     write_target_summary(internal_json_path, target_summary_path, target_functions)
     semantic_summary_path = output_dir / "semantic_coverage.txt"
     write_semantic_summary(test_dirs, semantic_summary_path, intent_outcomes)
+    interaction_summary_path = output_dir / "interaction_coverage.txt"
+    write_interaction_summary(
+        test_dirs,
+        interaction_summary_path,
+        stages,
+        dimensions=interaction_dimensions,
+        max_order=interaction_max_order,
+    )
     if json:
         pass
     else:
@@ -178,6 +194,7 @@ def measure_coverage(
     print(f"Summary:       {summary_path}")
     print(f"Target report: {target_summary_path}")
     print(f"Semantic:      {semantic_summary_path}")
+    print(f"Interactions:  {interaction_summary_path}")
     if json:
         print(f"JSON report:   {json_report_path}")
     if html:
@@ -353,6 +370,24 @@ def write_semantic_summary(
     output_path.write_text("\n".join(lines))
 
 
+def write_interaction_summary(
+    test_dirs: list[Path],
+    output_path: Path,
+    stages: dict[str, tuple[str, ...]],
+    *,
+    dimensions: tuple[str, ...],
+    max_order: int,
+) -> None:
+    cases = add_stage_dimension(load_case_metadata(test_dirs), stages)
+    output_path.write_text(
+        format_interaction_report(
+            cases,
+            dimensions,
+            max_order=max_order,
+        )
+    )
+
+
 class SemanticTotals:
     def __init__(self) -> None:
         self.total_intents = 0
@@ -390,6 +425,7 @@ def load_case_metadata_from_dir(test_dir: Path, yaml: YAML) -> list[dict[str, ob
                 "runner": manifest["runner"],
                 "handler": manifest["handler"],
                 "guide_intent": meta.get("profile", {}).get("guide_intent"),
+                "profile": meta.get("profile", {}),
                 "outcome": classify_case_outcome(meta),
             }
         )

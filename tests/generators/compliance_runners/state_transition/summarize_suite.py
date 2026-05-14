@@ -6,6 +6,11 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+from .interaction_coverage import (
+    add_stage_dimension,
+    format_interaction_summary,
+    interaction_settings,
+)
 from .measure_coverage import load_case_metadata
 from .ontology import (
     intent_outcomes_by_runner,
@@ -79,21 +84,31 @@ def summarize_suite(
     ontology = load_test_ontology(ontology_path)
     cases = load_rich_case_metadata(test_dir)
     stages = stage_handlers(ontology)
+    staged_cases = add_stage_dimension(cases, stages)
+    interaction_dimensions, interaction_max_order = interaction_settings(ontology)
     intent_outcomes = intent_outcomes_by_runner(ontology)
     target_functions = target_functions_by_runner(ontology)
 
     lines = [title, "=" * len(title), ""]
-    lines.extend(format_suite_shape(cases))
+    lines.extend(format_suite_shape(staged_cases))
     lines.append("")
-    lines.extend(format_stage_summary(cases, stages, intent_outcomes, coverage_dir))
+    lines.extend(format_stage_summary(staged_cases, stages, intent_outcomes, coverage_dir))
     lines.append("")
-    lines.extend(format_outcome_counts(cases))
+    lines.extend(format_outcome_counts(staged_cases))
     lines.append("")
-    lines.extend(format_distribution(cases, distribution))
+    lines.extend(
+        format_interaction_summary(
+            staged_cases,
+            interaction_dimensions,
+            max_order=interaction_max_order,
+        )
+    )
     lines.append("")
-    lines.extend(format_ontology_fit(cases, intent_outcomes, target_functions))
+    lines.extend(format_distribution(staged_cases, distribution))
     lines.append("")
-    lines.extend(format_semantic_outcomes(cases, intent_outcomes))
+    lines.extend(format_ontology_fit(staged_cases, intent_outcomes, target_functions))
+    lines.append("")
+    lines.extend(format_semantic_outcomes(staged_cases, intent_outcomes))
     lines.append("")
     lines.extend(format_target_coverage(coverage_dir))
     return "\n".join(lines)

@@ -27,6 +27,17 @@ stages:
       - sync_committee_updates
       - sync_aggregate
 
+interaction_coverage:
+  observed:
+    max_order: 2
+    dimensions:
+      common:
+        - stage
+        - runner
+        - handler
+        - intent
+        - outcome
+
 targets:
   operations:
     proposer_slashing:

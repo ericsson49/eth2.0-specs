@@ -112,6 +112,7 @@ Implemented:
 - reproducibility checks
 - deterministic distribution controls for generated suite shape
 - stage-aware campaign summaries
+- observed pairwise semantic interaction coverage
 
 ### Committee and Sync Stage
 
@@ -241,8 +242,10 @@ then add expected/constrained pairs once the useful dimensions are clearer.
 
 ## Suggested Next Steps
 
-1. Prototype observed semantic interaction coverage.
-2. Decide which observed pairs should become expected ontology targets.
+1. Decide which observed interaction pairs should become expected ontology
+   targets.
+2. Extend observed interaction reporting to sampled triples once randomized
+   generation starts using interaction targets.
 3. Start splitting the block/execution stage into smaller sub-stages.
 
 ## Open Questions

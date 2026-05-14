@@ -700,3 +700,12 @@ summary. Campaign summaries include a stage view derived from
 `test_ontology.yaml`, with case counts, outcome counts, semantic intent totals,
 and target coverage totals per ontology stage. The lower-level coverage tool
 also accepts repeated `--test-dir` arguments for direct aggregate reporting.
+
+The coverage command also writes `interaction_coverage.txt`, an observed
+semantic interaction report. The default ontology configuration records
+pairwise combinations over `stage`, `runner`, `handler`, `intent`, and
+`outcome`. The human suite and campaign summaries keep this compact by showing
+only the number of observed combinations per dimension pair; the detailed file
+lists each observed combination and its count. The same schema can later raise
+`max_order` to `3` for triple-wise reporting or add stage-specific dimensions
+from generated case profiles.
