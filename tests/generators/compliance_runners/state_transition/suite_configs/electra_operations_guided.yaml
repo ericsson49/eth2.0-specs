@@ -24,6 +24,10 @@ generation:
     - inactivity_updates
     - rewards_and_penalties
     - participation_flag_updates
+    - slashings_reset
+    - randao_mixes_reset
+    - eth1_data_reset
+    - historical_summaries_update
   per_handler_limit: 40
   guided: true
   changed_only: false

@@ -46,6 +46,10 @@ EPOCH_PROCESSORS = {
     "inactivity_updates": "process_inactivity_updates",
     "rewards_and_penalties": "process_rewards_and_penalties",
     "participation_flag_updates": "process_participation_flag_updates",
+    "slashings_reset": "process_slashings_reset",
+    "randao_mixes_reset": "process_randao_mixes_reset",
+    "eth1_data_reset": "process_eth1_data_reset",
+    "historical_summaries_update": "process_historical_summaries_update",
 }
 
 StateTransitionTestInfo = namedtuple(

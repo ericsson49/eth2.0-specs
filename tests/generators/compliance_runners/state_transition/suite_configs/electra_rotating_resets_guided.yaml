@@ -1,0 +1,22 @@
+name: electra_rotating_resets_guided
+description: Guided Electra rotating/reset stage vectors backed by the state-transition test ontology.
+
+generation:
+  output: state_transition_tests_rotating_resets
+  fork: electra
+  preset: minimal
+  stages:
+    - rotating_resets
+  per_handler_limit: 40
+  guided: true
+  changed_only: false
+  unchanged_only: false
+  invalid_only: false
+  keep_existing: false
+
+coverage:
+  output: state_transition_coverage_rotating_resets
+  ontology: tests/generators/compliance_runners/state_transition/test_ontology.yaml
+  html: true
+  annotate: true
+  json: true

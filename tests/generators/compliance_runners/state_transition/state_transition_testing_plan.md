@@ -84,6 +84,21 @@ Handlers:
 This stage focuses on finality movement, inactivity leak behavior,
 participation flags, rewards, penalties, and participation flag rotation.
 
+### Rotating and Reset Stage
+
+Implemented stage: `rotating_resets`
+
+Handlers:
+
+- `slashings_reset`
+- `randao_mixes_reset`
+- `eth1_data_reset`
+- `historical_summaries_update`
+
+This stage focuses on epoch-indexed ring buffers, reset boundaries, and
+historical accumulator updates. It covers both boundary and non-boundary cases
+where applicable.
+
 ### Tooling
 
 Implemented:
@@ -98,22 +113,6 @@ Implemented:
 - deterministic distribution controls for generated suite shape
 
 ## Remaining Stages
-
-### Rotating and Reset Stage
-
-Potential handlers:
-
-- `slashings_reset`
-- `randao_mixes_reset`
-- `eth1_data_reset`
-- `historical_summaries_update`
-
-Purpose:
-
-- Cover epoch-indexed ring buffers.
-- Catch off-by-one bugs around `current_epoch`, `next_epoch`, and modulo
-  indexing.
-- Exercise reset conditions at and away from period boundaries.
 
 ### Committee and Sync Stage
 
@@ -237,11 +236,11 @@ then add expected/constrained pairs once the useful dimensions are clearer.
 
 ## Suggested Next Steps
 
-1. Implement the rotating/reset stage.
-2. Add the rotating/reset suite to the campaign.
-3. Add campaign summary grouping by stage.
-4. Prototype observed semantic interaction coverage.
-5. Decide which observed pairs should become expected ontology targets.
+1. Implement the committee/sync stage.
+2. Add campaign summary grouping by stage.
+3. Prototype observed semantic interaction coverage.
+4. Decide which observed pairs should become expected ontology targets.
+5. Start splitting the block/execution stage into smaller sub-stages.
 
 ## Open Questions
 

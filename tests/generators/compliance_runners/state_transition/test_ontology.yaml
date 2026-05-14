@@ -14,6 +14,13 @@ stages:
       - inactivity_updates
       - rewards_and_penalties
       - participation_flag_updates
+  rotating_resets:
+    description: Epoch-indexed resets, ring buffers, and historical accumulators.
+    handlers:
+      - slashings_reset
+      - randao_mixes_reset
+      - eth1_data_reset
+      - historical_summaries_update
 
 targets:
   operations:
@@ -68,6 +75,18 @@ targets:
     participation_flag_updates:
       functions:
         - process_participation_flag_updates
+    slashings_reset:
+      functions:
+        - process_slashings_reset
+    randao_mixes_reset:
+      functions:
+        - process_randao_mixes_reset
+    eth1_data_reset:
+      functions:
+        - process_eth1_data_reset
+    historical_summaries_update:
+      functions:
+        - process_historical_summaries_update
     pending_deposits:
       functions:
         - process_pending_deposits
@@ -292,6 +311,30 @@ intents:
         outcome: changed
       previous_filled:
         outcome: changed
+
+    slashings_reset:
+      reset_nonzero:
+        outcome: changed
+      already_zero:
+        outcome: no_change
+
+    randao_mixes_reset:
+      reset_to_current_mix:
+        outcome: changed
+      already_current_mix:
+        outcome: no_change
+
+    eth1_data_reset:
+      period_boundary:
+        outcome: changed
+      non_boundary:
+        outcome: no_change
+
+    historical_summaries_update:
+      period_boundary:
+        outcome: changed
+      non_boundary:
+        outcome: no_change
 
     pending_deposits:
       success_top_up:

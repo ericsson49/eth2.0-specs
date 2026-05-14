@@ -51,6 +51,10 @@ MATERIALIZED_HANDLER_NAMES = (
     "inactivity_updates",
     "rewards_and_penalties",
     "participation_flag_updates",
+    "slashings_reset",
+    "randao_mixes_reset",
+    "eth1_data_reset",
+    "historical_summaries_update",
 )
 VALIDATOR_INDEX = 0
 TARGET_VALIDATOR_INDEX = 1
@@ -194,7 +198,17 @@ def materialize_case(
         return materialize_inactivity_updates(spec, state, test_case, abstract_case.profile)
     if abstract_case.handler_name == "rewards_and_penalties":
         return materialize_rewards_and_penalties(spec, state, test_case, abstract_case.profile)
-    return materialize_participation_flag_updates(spec, state, test_case, abstract_case.profile)
+    if abstract_case.handler_name == "participation_flag_updates":
+        return materialize_participation_flag_updates(
+            spec, state, test_case, abstract_case.profile
+        )
+    if abstract_case.handler_name == "slashings_reset":
+        return materialize_slashings_reset(spec, state, test_case, abstract_case.profile)
+    if abstract_case.handler_name == "randao_mixes_reset":
+        return materialize_randao_mixes_reset(spec, state, test_case, abstract_case.profile)
+    if abstract_case.handler_name == "eth1_data_reset":
+        return materialize_eth1_data_reset(spec, state, test_case, abstract_case.profile)
+    return materialize_historical_summaries_update(spec, state, test_case, abstract_case.profile)
 
 
 def materialize_proposer_slashing(
@@ -510,6 +524,66 @@ def materialize_participation_flag_updates(
     )
 
 
+def materialize_slashings_reset(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_slashings_reset(spec, state, profile)
+    return materialize_epoch_processor(
+        spec.process_slashings_reset,
+        state,
+        test_case,
+        profile,
+    )
+
+
+def materialize_randao_mixes_reset(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_randao_mixes_reset(spec, state, profile)
+    return materialize_epoch_processor(
+        spec.process_randao_mixes_reset,
+        state,
+        test_case,
+        profile,
+    )
+
+
+def materialize_eth1_data_reset(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_eth1_data_reset(spec, state, profile)
+    return materialize_epoch_processor(
+        spec.process_eth1_data_reset,
+        state,
+        test_case,
+        profile,
+    )
+
+
+def materialize_historical_summaries_update(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_historical_summaries_update(spec, state, profile)
+    return materialize_epoch_processor(
+        spec.process_historical_summaries_update,
+        state,
+        test_case,
+        profile,
+    )
+
+
 def materialize_epoch_processor(process_fn, state, test_case: TestCase, profile: dict[str, Any]):
     pre_state = state.copy()
     case_parts = [TestCasePart(("pre", "ssz", serialize(pre_state)))]
@@ -543,6 +617,10 @@ def runner_name_for_handler(handler_name: str) -> str:
         "inactivity_updates",
         "rewards_and_penalties",
         "participation_flag_updates",
+        "slashings_reset",
+        "randao_mixes_reset",
+        "eth1_data_reset",
+        "historical_summaries_update",
         "pending_deposits",
         "pending_consolidations",
         "effective_balance_updates",
@@ -2044,6 +2122,64 @@ def set_full_participation_flags(spec, state, *, previous: bool, current: bool) 
             state.previous_epoch_participation[index] = full_flags
         if current:
             state.current_epoch_participation[index] = full_flags
+
+
+def prepare_state_for_slashings_reset(spec, state, profile: dict[str, Any]) -> None:
+    state.slot = spec.compute_start_slot_at_epoch(spec.Epoch(2))
+    reset_index = (spec.get_current_epoch(state) + 1) % spec.EPOCHS_PER_SLASHINGS_VECTOR
+    state.slashings[reset_index] = spec.Gwei(0)
+
+    intent = profile.get("guide_intent")
+    if intent in (None, "reset_nonzero"):
+        state.slashings[reset_index] = spec.Gwei(spec.MIN_ACTIVATION_BALANCE)
+    elif intent == "already_zero":
+        return
+    else:
+        raise ValueError(f"Unsupported slashings reset guide intent: {intent}")
+
+
+def prepare_state_for_randao_mixes_reset(spec, state, profile: dict[str, Any]) -> None:
+    state.slot = spec.compute_start_slot_at_epoch(spec.Epoch(2))
+    current_epoch = spec.get_current_epoch(state)
+    reset_index = (current_epoch + 1) % spec.EPOCHS_PER_HISTORICAL_VECTOR
+    current_mix = spec.get_randao_mix(state, current_epoch)
+
+    intent = profile.get("guide_intent")
+    if intent in (None, "reset_to_current_mix"):
+        state.randao_mixes[reset_index] = b"\x56" * 32
+    elif intent == "already_current_mix":
+        state.randao_mixes[reset_index] = current_mix
+    else:
+        raise ValueError(f"Unsupported randao mixes reset guide intent: {intent}")
+
+
+def prepare_state_for_eth1_data_reset(spec, state, profile: dict[str, Any]) -> None:
+    intent = profile.get("guide_intent")
+    if intent in (None, "period_boundary"):
+        state.slot = spec.Slot(spec.EPOCHS_PER_ETH1_VOTING_PERIOD * spec.SLOTS_PER_EPOCH - 1)
+    elif intent == "non_boundary":
+        state.slot = spec.Slot(spec.SLOTS_PER_EPOCH - 1)
+    else:
+        raise ValueError(f"Unsupported eth1 data reset guide intent: {intent}")
+
+    state.eth1_data_votes = spec.List[spec.Eth1Data, spec.EPOCHS_PER_ETH1_VOTING_PERIOD * spec.SLOTS_PER_EPOCH]()
+    state.eth1_data_votes.append(
+        spec.Eth1Data(
+            deposit_root=b"\xaa" * 32,
+            deposit_count=state.eth1_deposit_index,
+            block_hash=b"\xbb" * 32,
+        )
+    )
+
+
+def prepare_state_for_historical_summaries_update(spec, state, profile: dict[str, Any]) -> None:
+    intent = profile.get("guide_intent")
+    if intent in (None, "period_boundary"):
+        state.slot = spec.Slot(spec.SLOTS_PER_HISTORICAL_ROOT - 1)
+    elif intent == "non_boundary":
+        state.slot = spec.compute_start_slot_at_epoch(spec.Epoch(2))
+    else:
+        raise ValueError(f"Unsupported historical summaries update guide intent: {intent}")
 
 
 def profile_epoch(spec, current_epoch, relation: str):
