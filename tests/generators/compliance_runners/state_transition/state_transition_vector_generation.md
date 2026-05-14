@@ -614,6 +614,7 @@ uv run --extra test python -m tests.generators.compliance_runners.state_transiti
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_validator_lifecycle_guided --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_participation_finality_guided --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_rotating_resets_guided --coverage --summary
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_committee_sync_guided --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --check-reproducible
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_campaign --campaign electra_state_transition
 ```
@@ -632,7 +633,8 @@ stage profile is `validator_lifecycle`, expanding to `registry_updates`,
 `justification_and_finalization`, `inactivity_updates`, `rewards_and_penalties`,
 and `participation_flag_updates`. The `rotating_resets` stage expands to
 `slashings_reset`, `randao_mixes_reset`, `eth1_data_reset`, and
-`historical_summaries_update`:
+`historical_summaries_update`. The `committee_sync` stage expands to
+`sync_committee_updates` and `sync_aggregate`:
 
 ```yaml
 generation:
@@ -686,6 +688,7 @@ name: electra_state_transition
 suites:
   - electra_operations_guided
   - electra_validator_lifecycle_guided
+  - electra_committee_sync_guided
 coverage:
   output: state_transition_coverage_campaign
   ontology: tests/generators/compliance_runners/state_transition/test_ontology.yaml

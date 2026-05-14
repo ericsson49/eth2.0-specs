@@ -1,0 +1,22 @@
+name: electra_committee_sync_guided
+description: Guided Electra committee/sync stage vectors backed by the state-transition test ontology.
+
+generation:
+  output: state_transition_tests_committee_sync
+  fork: electra
+  preset: minimal
+  stages:
+    - committee_sync
+  per_handler_limit: 40
+  guided: true
+  changed_only: false
+  unchanged_only: false
+  invalid_only: false
+  keep_existing: false
+
+coverage:
+  output: state_transition_coverage_committee_sync
+  ontology: tests/generators/compliance_runners/state_transition/test_ontology.yaml
+  html: true
+  annotate: true
+  json: true

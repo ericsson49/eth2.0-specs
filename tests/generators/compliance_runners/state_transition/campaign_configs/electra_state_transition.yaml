@@ -6,6 +6,7 @@ suites:
   - electra_validator_lifecycle_guided
   - electra_participation_finality_guided
   - electra_rotating_resets_guided
+  - electra_committee_sync_guided
 
 coverage:
   output: state_transition_coverage_campaign

@@ -45,6 +45,8 @@ HANDLER_NAMES = (
     "randao_mixes_reset",
     "eth1_data_reset",
     "historical_summaries_update",
+    "sync_committee_updates",
+    "sync_aggregate",
 )
 
 GUIDED_OPERATION_INTENTS = guided_operation_intents()
@@ -203,6 +205,10 @@ def is_materializable_for_handler(profile: dict[str, Any], handler_name: str) ->
     if handler_name == "eth1_data_reset":
         return True
     if handler_name == "historical_summaries_update":
+        return True
+    if handler_name == "sync_committee_updates":
+        return True
+    if handler_name == "sync_aggregate":
         return True
     raise ValueError(f"Unknown handler: {handler_name}")
 

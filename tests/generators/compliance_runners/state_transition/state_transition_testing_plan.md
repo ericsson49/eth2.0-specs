@@ -112,11 +112,11 @@ Implemented:
 - reproducibility checks
 - deterministic distribution controls for generated suite shape
 
-## Remaining Stages
-
 ### Committee and Sync Stage
 
-Potential handlers:
+Implemented stage: `committee_sync`
+
+Handlers:
 
 - `sync_committee_updates`
 - `sync_aggregate`
@@ -127,8 +127,12 @@ Purpose:
 - Cover current/next committee rotation.
 - Cover sync aggregate reward and penalty behavior.
 
-`sync_aggregate` may fit better as an operation/block-processing style test
-than as pure `epoch_processing`.
+The stage intentionally mixes an epoch-processing handler with an operation
+handler. `sync_committee_updates` covers period boundary rotation. The
+`sync_aggregate` operation covers all, majority, minority, empty, and invalid
+signature aggregate cases.
+
+## Remaining Stages
 
 ### Block and Execution Stage
 
@@ -236,11 +240,10 @@ then add expected/constrained pairs once the useful dimensions are clearer.
 
 ## Suggested Next Steps
 
-1. Implement the committee/sync stage.
-2. Add campaign summary grouping by stage.
-3. Prototype observed semantic interaction coverage.
-4. Decide which observed pairs should become expected ontology targets.
-5. Start splitting the block/execution stage into smaller sub-stages.
+1. Add campaign summary grouping by stage.
+2. Prototype observed semantic interaction coverage.
+3. Decide which observed pairs should become expected ontology targets.
+4. Start splitting the block/execution stage into smaller sub-stages.
 
 ## Open Questions
 

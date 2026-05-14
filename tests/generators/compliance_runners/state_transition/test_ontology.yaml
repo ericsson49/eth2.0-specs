@@ -21,6 +21,11 @@ stages:
       - randao_mixes_reset
       - eth1_data_reset
       - historical_summaries_update
+  committee_sync:
+    description: Sync committee period rotation and sync aggregate reward/penalty accounting.
+    handlers:
+      - sync_committee_updates
+      - sync_aggregate
 
 targets:
   operations:
@@ -53,6 +58,9 @@ targets:
       functions:
         - is_valid_switch_to_compounding_request
         - process_consolidation_request
+    sync_aggregate:
+      functions:
+        - process_sync_aggregate
   epoch_processing:
     justification_and_finalization:
       functions:
@@ -96,6 +104,9 @@ targets:
     effective_balance_updates:
       functions:
         - process_effective_balance_updates
+    sync_committee_updates:
+      functions:
+        - process_sync_committee_updates
 
 intents:
   operations:
@@ -243,6 +254,18 @@ intents:
       success:
         outcome: changed
 
+    sync_aggregate:
+      all_participate:
+        outcome: changed
+      majority_participate:
+        outcome: changed
+      minority_participate:
+        outcome: changed
+      none_participate:
+        outcome: changed
+      bad_signature:
+        outcome: assertion_failure
+
   epoch_processing:
     justification_and_finalization:
       genesis_skip:
@@ -377,3 +400,11 @@ intents:
         outcome: changed
       cap_at_max:
         outcome: changed
+
+    sync_committee_updates:
+      period_boundary:
+        outcome: changed
+      genesis_period_boundary:
+        outcome: changed
+      non_boundary:
+        outcome: no_change

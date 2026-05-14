@@ -22,6 +22,7 @@ OPERATION_INPUTS = {
     "voluntary_exit": ("voluntary_exit", "SignedVoluntaryExit"),
     "withdrawal_request": ("withdrawal_request", "WithdrawalRequest"),
     "consolidation_request": ("consolidation_request", "ConsolidationRequest"),
+    "sync_aggregate": ("sync_aggregate", "SyncAggregate"),
 }
 
 OPERATION_PROCESSORS = {
@@ -34,6 +35,7 @@ OPERATION_PROCESSORS = {
     "voluntary_exit": "process_voluntary_exit",
     "withdrawal_request": "process_withdrawal_request",
     "consolidation_request": "process_consolidation_request",
+    "sync_aggregate": "process_sync_aggregate",
 }
 
 EPOCH_PROCESSORS = {
@@ -50,6 +52,7 @@ EPOCH_PROCESSORS = {
     "randao_mixes_reset": "process_randao_mixes_reset",
     "eth1_data_reset": "process_eth1_data_reset",
     "historical_summaries_update": "process_historical_summaries_update",
+    "sync_committee_updates": "process_sync_committee_updates",
 }
 
 StateTransitionTestInfo = namedtuple(

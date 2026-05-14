@@ -14,6 +14,10 @@ from eth_consensus_specs.test.helpers.deposits import (
 from eth_consensus_specs.test.helpers.keys import privkeys, pubkeys
 from eth_consensus_specs.test.helpers.proposer_slashings import get_valid_proposer_slashing
 from eth_consensus_specs.test.helpers.state import transition_to
+from eth_consensus_specs.test.helpers.sync_committee import (
+    compute_aggregate_sync_committee_signature,
+    compute_committee_indices,
+)
 from eth_consensus_specs.test.helpers.voluntary_exits import sign_voluntary_exit
 from eth_consensus_specs.test.helpers.withdrawals import (
     set_compounding_withdrawal_credential_with_balance,
@@ -55,6 +59,8 @@ MATERIALIZED_HANDLER_NAMES = (
     "randao_mixes_reset",
     "eth1_data_reset",
     "historical_summaries_update",
+    "sync_committee_updates",
+    "sync_aggregate",
 )
 VALIDATOR_INDEX = 0
 TARGET_VALIDATOR_INDEX = 1
@@ -208,7 +214,19 @@ def materialize_case(
         return materialize_randao_mixes_reset(spec, state, test_case, abstract_case.profile)
     if abstract_case.handler_name == "eth1_data_reset":
         return materialize_eth1_data_reset(spec, state, test_case, abstract_case.profile)
-    return materialize_historical_summaries_update(spec, state, test_case, abstract_case.profile)
+    if abstract_case.handler_name == "historical_summaries_update":
+        return materialize_historical_summaries_update(
+            spec, state, test_case, abstract_case.profile
+        )
+    if abstract_case.handler_name == "sync_committee_updates":
+        return materialize_sync_committee_updates(spec, state, test_case, abstract_case.profile)
+    return materialize_sync_aggregate(
+        spec,
+        state,
+        test_case,
+        abstract_case.profile,
+        invalid_operation=invalid_operation,
+    )
 
 
 def materialize_proposer_slashing(
@@ -584,6 +602,21 @@ def materialize_historical_summaries_update(
     )
 
 
+def materialize_sync_committee_updates(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_sync_committee_updates(spec, state, profile)
+    return materialize_epoch_processor(
+        spec.process_sync_committee_updates,
+        state,
+        test_case,
+        profile,
+    )
+
+
 def materialize_epoch_processor(process_fn, state, test_case: TestCase, profile: dict[str, Any]):
     pre_state = state.copy()
     case_parts = [TestCasePart(("pre", "ssz", serialize(pre_state)))]
@@ -621,6 +654,7 @@ def runner_name_for_handler(handler_name: str) -> str:
         "randao_mixes_reset",
         "eth1_data_reset",
         "historical_summaries_update",
+        "sync_committee_updates",
         "pending_deposits",
         "pending_consolidations",
         "effective_balance_updates",
@@ -878,6 +912,43 @@ def materialize_pending_deposits(
     case_parts = [TestCasePart(("pre", "ssz", serialize(pre_state)))]
     try:
         spec.process_pending_deposits(state)
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
+def materialize_sync_aggregate(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+    *,
+    invalid_operation: bool,
+) -> TestCaseResult:
+    sync_aggregate = prepare_state_for_sync_aggregate(spec, state, profile)
+    if invalid_operation:
+        profile["bls_setting"] = 1
+        sync_aggregate.sync_committee_signature = spec.BLSSignature(b"\x42" * 96)
+
+    pre_state = state.copy()
+    case_parts = operation_case_parts(pre_state, "sync_aggregate", sync_aggregate)
+    try:
+        with_bls_setting(profile, lambda: spec.process_sync_aggregate(state, sync_aggregate))
     except AssertionError:
         return TestCaseResult(
             test_case=test_case,
@@ -2180,6 +2251,74 @@ def prepare_state_for_historical_summaries_update(spec, state, profile: dict[str
         state.slot = spec.compute_start_slot_at_epoch(spec.Epoch(2))
     else:
         raise ValueError(f"Unsupported historical summaries update guide intent: {intent}")
+
+
+def prepare_state_for_sync_committee_updates(spec, state, profile: dict[str, Any]) -> None:
+    intent = profile.get("guide_intent")
+    if intent in (None, "period_boundary", "genesis_period_boundary"):
+        target_period = 1
+        if intent == "genesis_period_boundary":
+            target_period = 0
+        end_epoch = spec.Epoch(
+            (target_period + 1) * spec.EPOCHS_PER_SYNC_COMMITTEE_PERIOD - 1
+        )
+        transition_to(spec, state, spec.compute_start_slot_at_epoch(end_epoch))
+    elif intent == "non_boundary":
+        transition_to(spec, state, spec.compute_start_slot_at_epoch(spec.Epoch(1)))
+    else:
+        raise ValueError(f"Unsupported sync committee updates guide intent: {intent}")
+
+
+def prepare_state_for_sync_aggregate(spec, state, profile: dict[str, Any]):
+    transition_to(spec, state, spec.Slot(1))
+    profile["bls_setting"] = 1
+    old_bls_active = bls.bls_active
+    bls.bls_active = True
+    try:
+        state.current_sync_committee.aggregate_pubkey = spec.eth_aggregate_pubkeys(
+            state.current_sync_committee.pubkeys
+        )
+    finally:
+        bls.bls_active = old_bls_active
+    committee_indices = compute_committee_indices(state)
+    committee_size = len(committee_indices)
+    intent = profile.get("guide_intent")
+
+    if intent in (None, "all_participate"):
+        participant_count = committee_size
+    elif intent == "majority_participate":
+        participant_count = committee_size // 2 + 1
+    elif intent == "minority_participate":
+        participant_count = max(1, committee_size // 2)
+    elif intent in ("none_participate", "bad_signature"):
+        participant_count = 0 if intent == "none_participate" else committee_size
+    else:
+        raise ValueError(f"Unsupported sync aggregate guide intent: {intent}")
+
+    committee_bits = [index < participant_count for index in range(committee_size)]
+    participants = [
+        validator_index
+        for validator_index, participation_bit in zip(committee_indices, committee_bits)
+        if participation_bit
+    ]
+    old_bls_active = bls.bls_active
+    bls.bls_active = True
+    try:
+        signature = compute_aggregate_sync_committee_signature(
+            spec,
+            state,
+            spec.Slot(0),
+            participants,
+        )
+    finally:
+        bls.bls_active = old_bls_active
+    if intent == "bad_signature":
+        signature = spec.BLSSignature(b"\x42" * 96)
+
+    return spec.SyncAggregate(
+        sync_committee_bits=committee_bits,
+        sync_committee_signature=signature,
+    )
 
 
 def profile_epoch(spec, current_epoch, relation: str):
