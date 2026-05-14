@@ -1,0 +1,119 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from .run_suite import generate_from_config, measure_from_config, validate_suites
+from .suite_config import read_yaml, resolve_campaign_config_path, resolve_suite_config_path
+from .summarize_suite import summarize_suite
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Run a campaign of state-transition test-suite profiles"
+    )
+    parser.add_argument(
+        "--campaign",
+        default="electra_state_transition",
+        help="Campaign config name or path. Defaults to electra_state_transition.",
+    )
+    parser.add_argument(
+        "--generate",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Generate vectors from campaign suites.",
+    )
+    parser.add_argument(
+        "--validate",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Validate generated vectors with the local runner.",
+    )
+    parser.add_argument(
+        "--coverage",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Measure aggregate coverage for generated vectors.",
+    )
+    parser.add_argument(
+        "--summary",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Print an aggregate campaign health summary.",
+    )
+    parser.add_argument(
+        "--coverage-output",
+        type=Path,
+        help="Override campaign coverage output directory.",
+    )
+    parser.add_argument(
+        "--summary-output",
+        type=Path,
+        help="Optional file to write the campaign health summary to.",
+    )
+    args = parser.parse_args()
+
+    campaign_config_path = resolve_campaign_config_path(args.campaign)
+    campaign_config = read_yaml(campaign_config_path)
+    suite_runs = resolve_campaign_suites(campaign_config)
+    output_dirs = [suite_run.output_dir for suite_run in suite_runs]
+
+    if args.generate:
+        for suite_run in suite_runs:
+            generate_from_config(suite_run.generation_config, suite_run.output_dir)
+
+    if args.validate and not args.coverage:
+        validate_suites(output_dirs)
+
+    coverage_config = campaign_config.get("coverage", {})
+    coverage_output = args.coverage_output or Path(coverage_config["output"])
+    if args.coverage:
+        measure_from_config(coverage_config, test_dir=output_dirs, output_dir=coverage_output)
+
+    if args.summary:
+        ontology_path = coverage_config.get("ontology")
+        summary = summarize_suite(
+            test_dir=output_dirs,
+            ontology_path=Path(ontology_path) if ontology_path else None,
+            coverage_dir=coverage_output if args.coverage or coverage_output.exists() else None,
+            title="State Transition Campaign Summary",
+        )
+        print(summary)
+        if args.summary_output is not None:
+            args.summary_output.parent.mkdir(parents=True, exist_ok=True)
+            args.summary_output.write_text(summary)
+
+
+class CampaignSuiteRun:
+    def __init__(self, generation_config: dict, output_dir: Path) -> None:
+        self.generation_config = generation_config
+        self.output_dir = output_dir
+
+
+def resolve_campaign_suites(campaign_config: dict) -> list[CampaignSuiteRun]:
+    suite_runs = []
+    for suite_entry in campaign_config["suites"]:
+        suite_name, output_override = normalize_suite_entry(suite_entry)
+        suite_config = read_yaml(resolve_suite_config_path(suite_name))
+        generation_config = dict(suite_config["generation"])
+        if output_override is not None:
+            generation_config["output"] = str(output_override)
+        suite_runs.append(
+            CampaignSuiteRun(
+                generation_config=generation_config,
+                output_dir=Path(generation_config["output"]),
+            )
+        )
+    return suite_runs
+
+
+def normalize_suite_entry(suite_entry) -> tuple[str, Path | None]:
+    if isinstance(suite_entry, str):
+        return suite_entry, None
+    if isinstance(suite_entry, dict):
+        return suite_entry["suite"], Path(suite_entry["output"]) if "output" in suite_entry else None
+    raise TypeError(f"Unsupported suite entry: {suite_entry!r}")
+
+
+if __name__ == "__main__":
+    main()

@@ -613,6 +613,7 @@ uv run --extra test python -m tests.generators.compliance_runners.state_transiti
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_validator_lifecycle_guided --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --check-reproducible
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_campaign --campaign electra_state_transition
 ```
 
 The default guided Electra operations profile lives in
@@ -669,3 +670,22 @@ The reproducibility check generates the same suite config twice into fresh
 temporary directories and compares all emitted files byte-for-byte. Use
 `--keep-reproducibility-temp` to preserve those directories when debugging a
 difference.
+
+Coverage campaigns aggregate multiple generated suites under one ontology-level
+reporting unit. Campaign configs live in `campaign_configs/` and list suite
+configs plus aggregate coverage settings:
+
+```yaml
+name: electra_state_transition
+suites:
+  - electra_operations_guided
+  - electra_validator_lifecycle_guided
+coverage:
+  output: state_transition_coverage_campaign
+  ontology: tests/generators/compliance_runners/state_transition/test_ontology.yaml
+```
+
+The campaign runner generates each suite, validates all generated directories,
+measures coverage in one `coverage.py` session, and prints a combined health
+summary. The lower-level coverage tool also accepts repeated `--test-dir`
+arguments for direct aggregate reporting.

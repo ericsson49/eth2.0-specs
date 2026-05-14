@@ -25,9 +25,13 @@ def main() -> None:
     )
     parser.add_argument(
         "--test-dir",
+        action="append",
         type=Path,
         required=True,
-        help="Directory containing generated state-transition compliance tests.",
+        help=(
+            "Directory containing generated state-transition compliance tests. "
+            "Can be repeated for campaign-level coverage."
+        ),
     )
     parser.add_argument(
         "--output",
@@ -78,7 +82,7 @@ def main() -> None:
     args = parser.parse_args()
 
     exit_code = measure_coverage(
-        test_dir=args.test_dir,
+        test_dirs=args.test_dir,
         output_dir=args.output,
         source_files=args.source_file,
         target_config=args.target_config,
@@ -94,7 +98,7 @@ def main() -> None:
 
 def measure_coverage(
     *,
-    test_dir: Path,
+    test_dirs: list[Path],
     output_dir: Path,
     source_files: list[Path] | None,
     target_config: Path | None,
@@ -106,10 +110,10 @@ def measure_coverage(
     limit: int | None,
 ) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
-    report_files = resolve_report_files(test_dir, source_files)
+    report_files = resolve_report_files(test_dirs, source_files)
     ontology = load_test_ontology(ontology_path)
-    target_functions = resolve_target_functions(test_dir, target_config, ontology)
-    intent_outcomes = infer_suite_intent_outcomes(test_dir, ontology)
+    target_functions = resolve_target_functions(test_dirs, target_config, ontology)
+    intent_outcomes = infer_suite_intent_outcomes(test_dirs, ontology)
 
     cov = Coverage(
         branch=True,
@@ -119,10 +123,10 @@ def measure_coverage(
     cov.start()
     pytest_args = [
         str(RUNNER_TEST),
-        "--test-dir",
-        str(test_dir),
         "-q",
     ]
+    for test_dir in test_dirs:
+        pytest_args.extend(["--test-dir", str(test_dir)])
     if start is not None:
         pytest_args.extend(["--start", str(start)])
     if limit is not None:
@@ -152,7 +156,7 @@ def measure_coverage(
     target_summary_path = output_dir / "target_coverage.txt"
     write_target_summary(internal_json_path, target_summary_path, target_functions)
     semantic_summary_path = output_dir / "semantic_coverage.txt"
-    write_semantic_summary(test_dir, semantic_summary_path, intent_outcomes)
+    write_semantic_summary(test_dirs, semantic_summary_path, intent_outcomes)
     if json:
         pass
     else:
@@ -304,11 +308,11 @@ def write_target_summary(
 
 
 def write_semantic_summary(
-    test_dir: Path,
+    test_dirs: list[Path],
     output_path: Path,
     intent_outcomes: dict[str, dict[str, dict[str, str]]],
 ) -> None:
-    manifests = load_case_metadata(test_dir)
+    manifests = load_case_metadata(test_dirs)
     lines = ["Semantic Coverage", "=================", ""]
     totals = SemanticTotals()
     if not intent_outcomes:
@@ -363,8 +367,20 @@ class SemanticTotals:
             self.valid_outcomes += 1
 
 
-def load_case_metadata(test_dir: Path) -> list[dict[str, object]]:
+def load_case_metadata(test_dirs: Path | list[Path]) -> list[dict[str, object]]:
     yaml = YAML(typ="safe")
+    cases = []
+    if isinstance(test_dirs, Path):
+        test_dirs = [test_dirs]
+    elif isinstance(test_dirs, str):
+        test_dirs = [Path(test_dirs)]
+
+    for test_dir in test_dirs:
+        cases.extend(load_case_metadata_from_dir(test_dir, yaml))
+    return cases
+
+
+def load_case_metadata_from_dir(test_dir: Path, yaml: YAML) -> list[dict[str, object]]:
     cases = []
     for manifest_path in test_dir.rglob("manifest.yaml"):
         manifest = yaml.load(manifest_path.read_text())
@@ -552,23 +568,23 @@ def format_branch_target(target: int) -> str:
     return str(target)
 
 
-def resolve_report_files(test_dir: Path, source_files: list[Path] | None) -> list[str]:
+def resolve_report_files(test_dirs: list[Path], source_files: list[Path] | None) -> list[str]:
     if source_files:
         return [str(path) for path in source_files]
 
-    inferred_files = sorted(infer_pyspec_files(test_dir))
+    inferred_files = sorted(infer_pyspec_files(test_dirs))
     if inferred_files:
         return [str(path) for path in inferred_files]
     return [str(PYSPEC_ROOT)]
 
 
 def resolve_target_functions(
-    test_dir: Path,
+    test_dirs: list[Path],
     target_config: Path | None,
     ontology: dict,
 ) -> dict[str, tuple[str, ...]]:
     target_config_data = load_target_config(target_config, ontology)
-    suite_targets = infer_suite_targets(test_dir, target_config_data)
+    suite_targets = infer_suite_targets(test_dirs, target_config_data)
     target_functions = {}
     for runner, handlers in suite_targets.items():
         for handler, functions in handlers.items():
@@ -584,50 +600,53 @@ def load_target_config(target_config: Path | None, ontology: dict) -> dict:
     return yaml.load(target_config.read_text())
 
 
-def infer_suite_targets(test_dir: Path, target_config: dict) -> dict[str, dict[str, tuple[str, ...]]]:
+def infer_suite_targets(test_dirs: list[Path], target_config: dict) -> dict[str, dict[str, tuple[str, ...]]]:
     yaml = YAML(typ="safe")
     targets = {}
-    for manifest_path in test_dir.rglob("manifest.yaml"):
-        manifest = yaml.load(manifest_path.read_text())
-        runner = manifest["runner"]
-        handler = manifest["handler"]
-        functions = target_config.get(runner, {}).get(handler)
-        if not functions:
-            continue
-        if isinstance(functions, dict):
-            functions = functions["functions"]
-        targets.setdefault(runner, {})[handler] = tuple(functions)
+    for test_dir in test_dirs:
+        for manifest_path in test_dir.rglob("manifest.yaml"):
+            manifest = yaml.load(manifest_path.read_text())
+            runner = manifest["runner"]
+            handler = manifest["handler"]
+            functions = target_config.get(runner, {}).get(handler)
+            if not functions:
+                continue
+            if isinstance(functions, dict):
+                functions = functions["functions"]
+            targets.setdefault(runner, {})[handler] = tuple(functions)
     return targets
 
 
 def infer_suite_intent_outcomes(
-    test_dir: Path,
+    test_dirs: list[Path],
     ontology: dict,
 ) -> dict[str, dict[str, dict[str, str]]]:
     configured_outcomes = intent_outcomes_by_runner(ontology)
     yaml = YAML(typ="safe")
     outcomes = {}
-    for manifest_path in test_dir.rglob("manifest.yaml"):
-        manifest = yaml.load(manifest_path.read_text())
-        runner = manifest["runner"]
-        handler = manifest["handler"]
-        handler_outcomes = configured_outcomes.get(runner, {}).get(handler)
-        if not handler_outcomes:
-            continue
-        outcomes.setdefault(runner, {})[handler] = handler_outcomes
+    for test_dir in test_dirs:
+        for manifest_path in test_dir.rglob("manifest.yaml"):
+            manifest = yaml.load(manifest_path.read_text())
+            runner = manifest["runner"]
+            handler = manifest["handler"]
+            handler_outcomes = configured_outcomes.get(runner, {}).get(handler)
+            if not handler_outcomes:
+                continue
+            outcomes.setdefault(runner, {})[handler] = handler_outcomes
     return outcomes
 
 
-def infer_pyspec_files(test_dir: Path) -> set[Path]:
+def infer_pyspec_files(test_dirs: list[Path]) -> set[Path]:
     yaml = YAML(typ="safe")
     files = set()
-    for manifest_path in test_dir.rglob("manifest.yaml"):
-        manifest = yaml.load(manifest_path.read_text())
-        fork = manifest["fork"]
-        preset = manifest["preset"]
-        source_file = PYSPEC_ROOT / fork / f"{preset}.py"
-        if source_file.exists():
-            files.add(source_file)
+    for test_dir in test_dirs:
+        for manifest_path in test_dir.rglob("manifest.yaml"):
+            manifest = yaml.load(manifest_path.read_text())
+            fork = manifest["fork"]
+            preset = manifest["preset"]
+            source_file = PYSPEC_ROOT / fork / f"{preset}.py"
+            if source_file.exists():
+                files.add(source_file)
     return files
 
 

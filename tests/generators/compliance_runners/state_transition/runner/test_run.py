@@ -157,6 +157,11 @@ def run_processing_case(process_fn, state, operation, expected_post):
 
 
 def gather_tests(tests_dir) -> Iterable[StateTransitionTestInfo]:
+    if isinstance(tests_dir, (list, tuple)):
+        for path in tests_dir:
+            yield from gather_tests(path)
+        return
+
     tests_path = Path(tests_dir)
     for preset in [p.name for p in tests_path.glob("*") if p.name in spec_targets]:
         for fork in [

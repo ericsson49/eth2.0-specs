@@ -1,0 +1,13 @@
+name: electra_state_transition
+description: Aggregate Electra state-transition campaign over guided suites.
+
+suites:
+  - electra_operations_guided
+  - electra_validator_lifecycle_guided
+
+coverage:
+  output: state_transition_coverage_campaign
+  ontology: tests/generators/compliance_runners/state_transition/test_ontology.yaml
+  html: true
+  annotate: true
+  json: true

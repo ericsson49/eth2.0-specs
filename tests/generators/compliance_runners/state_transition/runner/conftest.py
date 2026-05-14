@@ -6,9 +6,12 @@ from eth_consensus_specs.utils import bls
 def pytest_addoption(parser):
     parser.addoption(
         "--test-dir",
-        action="store",
+        action="append",
         default=None,
-        help="Directory containing generated state-transition compliance tests.",
+        help=(
+            "Directory containing generated state-transition compliance tests. "
+            "Can be repeated."
+        ),
     )
     parser.addoption(
         "--start",

@@ -142,28 +142,39 @@ def generate_from_config(generation_config: dict, output_dir: Path) -> None:
 
 
 def validate_suite(output_dir: Path) -> None:
+    validate_suites([output_dir])
+
+
+def validate_suites(output_dirs: list[Path]) -> None:
+    pytest_args = [
+        str(RUNNER_TEST),
+        "-q",
+    ]
+    for output_dir in output_dirs:
+        pytest_args.extend(["--test-dir", str(output_dir)])
     exit_code = pytest.main(
-        [
-            str(RUNNER_TEST),
-            "--test-dir",
-            str(output_dir),
-            "-q",
-        ]
+        pytest_args
     )
     if exit_code != 0:
         raise SystemExit(int(exit_code))
 
 
-def measure_from_config(coverage_config: dict, *, test_dir: Path, output_dir: Path) -> None:
+def measure_from_config(
+    coverage_config: dict,
+    *,
+    test_dir: Path | list[Path],
+    output_dir: Path,
+) -> None:
+    test_dirs = test_dir if isinstance(test_dir, list) else [test_dir]
     args = [
         sys.executable,
         "-m",
         "tests.generators.compliance_runners.state_transition.measure_coverage",
-        "--test-dir",
-        str(test_dir),
         "--output",
         str(output_dir),
     ]
+    for path in test_dirs:
+        args.extend(["--test-dir", str(path)])
     for source_file in coverage_config.get("source_files", []):
         args.extend(["--source-file", str(source_file)])
     if coverage_config.get("target_config"):

@@ -17,9 +17,13 @@ def main() -> None:
     )
     parser.add_argument(
         "--test-dir",
+        action="append",
         type=Path,
         required=True,
-        help="Directory containing generated state-transition compliance tests.",
+        help=(
+            "Directory containing generated state-transition compliance tests. "
+            "Can be repeated for campaign-level summaries."
+        ),
     )
     parser.add_argument(
         "--ontology",
@@ -61,17 +65,18 @@ def main() -> None:
 
 def summarize_suite(
     *,
-    test_dir: Path,
+    test_dir: Path | list[Path],
     ontology_path: Path | None = None,
     coverage_dir: Path | None = None,
     distribution: dict[str, dict[str, int]] | None = None,
+    title: str = "State Transition Suite Summary",
 ) -> str:
     ontology = load_test_ontology(ontology_path)
     cases = load_rich_case_metadata(test_dir)
     intent_outcomes = intent_outcomes_by_runner(ontology)
     target_functions = target_functions_by_runner(ontology)
 
-    lines = ["State Transition Suite Summary", "==============================", ""]
+    lines = [title, "=" * len(title), ""]
     lines.extend(format_suite_shape(cases))
     lines.append("")
     lines.extend(format_outcome_counts(cases))
