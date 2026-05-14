@@ -696,5 +696,7 @@ coverage:
 
 The campaign runner generates each suite, validates all generated directories,
 measures coverage in one `coverage.py` session, and prints a combined health
-summary. The lower-level coverage tool also accepts repeated `--test-dir`
-arguments for direct aggregate reporting.
+summary. Campaign summaries include a stage view derived from
+`test_ontology.yaml`, with case counts, outcome counts, semantic intent totals,
+and target coverage totals per ontology stage. The lower-level coverage tool
+also accepts repeated `--test-dir` arguments for direct aggregate reporting.

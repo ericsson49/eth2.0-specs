@@ -111,6 +111,7 @@ Implemented:
 - suite and campaign summaries
 - reproducibility checks
 - deterministic distribution controls for generated suite shape
+- stage-aware campaign summaries
 
 ### Committee and Sync Stage
 
@@ -240,10 +241,9 @@ then add expected/constrained pairs once the useful dimensions are clearer.
 
 ## Suggested Next Steps
 
-1. Add campaign summary grouping by stage.
-2. Prototype observed semantic interaction coverage.
-3. Decide which observed pairs should become expected ontology targets.
-4. Start splitting the block/execution stage into smaller sub-stages.
+1. Prototype observed semantic interaction coverage.
+2. Decide which observed pairs should become expected ontology targets.
+3. Start splitting the block/execution stage into smaller sub-stages.
 
 ## Open Questions
 

@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from .measure_coverage import load_case_metadata
-from .ontology import intent_outcomes_by_runner, load_test_ontology, target_functions_by_runner
+from .ontology import (
+    intent_outcomes_by_runner,
+    load_test_ontology,
+    stage_handlers,
+    target_functions_by_runner,
+)
 from .suite_config import read_yaml, resolve_suite_config_path
 
 
@@ -73,11 +78,14 @@ def summarize_suite(
 ) -> str:
     ontology = load_test_ontology(ontology_path)
     cases = load_rich_case_metadata(test_dir)
+    stages = stage_handlers(ontology)
     intent_outcomes = intent_outcomes_by_runner(ontology)
     target_functions = target_functions_by_runner(ontology)
 
     lines = [title, "=" * len(title), ""]
     lines.extend(format_suite_shape(cases))
+    lines.append("")
+    lines.extend(format_stage_summary(cases, stages, intent_outcomes, coverage_dir))
     lines.append("")
     lines.extend(format_outcome_counts(cases))
     lines.append("")
@@ -113,6 +121,115 @@ def format_suite_shape(cases: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def format_stage_summary(
+    cases: list[dict[str, Any]],
+    stages: dict[str, tuple[str, ...]],
+    intent_outcomes: dict[str, dict[str, dict[str, str]]],
+    coverage_dir: Path | None,
+) -> list[str]:
+    lines = ["Stage Summary", "-------------"]
+    if not stages:
+        lines.append("not configured")
+        return lines
+
+    target_totals = parse_stage_target_totals(coverage_dir, stages)
+    for stage_name, handlers in stages.items():
+        stage_cases = [
+            case
+            for case in cases
+            if case["handler"] in handlers
+        ]
+        outcome_counts = Counter(case["outcome"] for case in stage_cases)
+        intent_covered, intent_total, outcome_valid = stage_semantic_totals(
+            stage_cases,
+            handlers,
+            intent_outcomes,
+        )
+        outcome_summary = format_counter(outcome_counts) if outcome_counts else "none"
+        lines.append(f"{stage_name}: {len(stage_cases)} cases ({outcome_summary})")
+        lines.append(f"  intents: {intent_covered}/{intent_total}")
+        lines.append(f"  outcomes: {outcome_valid}/{intent_total}")
+        if stage_name in target_totals:
+            statement_done, statement_total, branch_done, branch_total = target_totals[stage_name]
+            lines.append(
+                f"  targets: statements {statement_done}/{statement_total} "
+                f"({percent_string(statement_done, statement_total)}), "
+                f"branches {branch_done}/{branch_total} "
+                f"({percent_string(branch_done, branch_total)})"
+            )
+    ungrouped_cases = [
+        case
+        for case in cases
+        if not any(case["handler"] in handlers for handlers in stages.values())
+    ]
+    if ungrouped_cases:
+        lines.append(f"ungrouped: {len(ungrouped_cases)} cases")
+    return lines
+
+
+def stage_semantic_totals(
+    cases: list[dict[str, Any]],
+    handlers: tuple[str, ...],
+    intent_outcomes: dict[str, dict[str, dict[str, str]]],
+) -> tuple[int, int, int]:
+    covered = 0
+    total = 0
+    valid = 0
+    for runner, runner_handlers in intent_outcomes.items():
+        for handler in handlers:
+            if handler not in runner_handlers:
+                continue
+            for intent_name, expected_outcome in runner_handlers[handler].items():
+                matching_cases = [
+                    case
+                    for case in cases
+                    if case["runner"] == runner
+                    and case["handler"] == handler
+                    and case["guide_intent"] == intent_name
+                ]
+                actual_outcomes = sorted({case["outcome"] for case in matching_cases})
+                total += 1
+                if matching_cases:
+                    covered += 1
+                if matching_cases and actual_outcomes == [expected_outcome]:
+                    valid += 1
+    return covered, total, valid
+
+
+def parse_stage_target_totals(
+    coverage_dir: Path | None,
+    stages: dict[str, tuple[str, ...]],
+) -> dict[str, tuple[int, int, int, int]]:
+    if coverage_dir is None:
+        return {}
+    target_report = coverage_dir / "target_coverage.txt"
+    if not target_report.exists():
+        return {}
+
+    totals = {stage_name: [0, 0, 0, 0] for stage_name in stages}
+    pattern = re.compile(
+        r"^(operations|epoch_processing)/([^:]+): .*\n"
+        r"  statements: (\d+)/(\d+) \([^)]+\)\n"
+        r"  branches:\s+(\d+)/(\d+) \([^)]+\)",
+        re.MULTILINE,
+    )
+    for _, handler, statement_done, statement_total, branch_done, branch_total in pattern.findall(
+        target_report.read_text()
+    ):
+        for stage_name, handlers in stages.items():
+            if handler not in handlers:
+                continue
+            totals[stage_name][0] += int(statement_done)
+            totals[stage_name][1] += int(statement_total)
+            totals[stage_name][2] += int(branch_done)
+            totals[stage_name][3] += int(branch_total)
+    return {
+        stage_name: tuple(stage_totals)
+        for stage_name, stage_totals in totals.items()
+        if stage_totals[1] or stage_totals[3]
+    }
+
+
 def format_outcome_counts(cases: list[dict[str, Any]]) -> list[str]:
     lines = ["Outcome Counts", "--------------"]
     if not cases:
@@ -123,8 +240,7 @@ def format_outcome_counts(cases: list[dict[str, Any]]) -> list[str]:
         lines.append(runner)
         for handler, handler_cases in sorted(group_by(runner_cases, "handler").items()):
             counts = Counter(case["outcome"] for case in handler_cases)
-            summary = ", ".join(f"{name}: {counts[name]}" for name in sorted(counts))
-            lines.append(f"  {handler}: {summary}")
+            lines.append(f"  {handler}: {format_counter(counts)}")
     return lines
 
 
@@ -287,6 +403,16 @@ def parse_target_totals(text: str) -> tuple[str, str, str, str, str, str] | None
     if not statement_matches or not branch_matches:
         return None
     return (*statement_matches[-1], *branch_matches[-1])
+
+
+def format_counter(counter: Counter) -> str:
+    return ", ".join(f"{name}: {counter[name]}" for name in sorted(counter))
+
+
+def percent_string(numerator: int, denominator: int) -> str:
+    if denominator == 0:
+        return "100.0%"
+    return f"{numerator / denominator * 100:.1f}%"
 
 
 def group_by(cases: list[dict[str, Any]], key: str) -> dict[str, list[dict[str, Any]]]:
