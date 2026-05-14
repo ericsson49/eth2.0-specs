@@ -39,6 +39,128 @@ The generator has four layers:
    - Campaign summaries aggregate multiple suites under one ontology-level
      coverage report.
 
+## Ontological Lens
+
+The state-transition functions under test have two basic execution shapes:
+
+- Epoch-processing handlers: `State -> State`
+- Operation handlers: `(State, Input) -> State`
+
+The test-generation ontology describes those executions with a small set of
+related concepts:
+
+- **Profile**: an abstract state aspect. A profile is a projection of the full
+  `BeaconState` into facts relevant to a behavior area, such as validator
+  lifecycle status, balance relations, credentials, queue state, participation
+  state, or sync committee boundary state.
+- **Stage**: a behavioral aspect or protocol area. A stage groups handlers that
+  together express one part of the state transition, such as validator
+  lifecycle, participation/finality, rotating resets, or committee/sync
+  behavior.
+- **Handler**: the concrete spec function under test. Each generated case calls
+  one handler, either directly as an epoch-processing function or with an
+  operation input.
+- **Intent**: a semantic behavior class for a handler. Intents describe the
+  behavior the test is trying to exercise, such as `queue_full`,
+  `bad_signature`, `success_partial_withdrawal`, or `period_boundary`.
+- **Outcome**: the coarse effect class of executing the handler. Current
+  outcomes are `changed`, `no_change`, and `assertion_failure`.
+
+These concepts answer different questions:
+
+- Profile: what abstract state aspect is being materialized?
+- Stage: which protocol behavior area owns this handler?
+- Handler: which spec function is executed?
+- Intent: which semantic behavior class is targeted?
+- Outcome: what high-level effect is expected or observed?
+
+An outcome can be viewed as effect-shaped semantic information, but it is kept
+separate from intent because it describes the result rather than the behavior
+goal. For example, `withdrawal_request / pubkey_missing -> no_change` and
+`consolidation_request / source_missing -> no_change` have the same outcome but
+different intents.
+
+The current implementation assigns one primary intent to each generated case.
+Real executions can touch multiple semantic facts at once, such as credential
+type, queue capacity, active status, amount class, and outcome. The observed
+interaction report is the first step toward measuring these combinations. Over
+time, materializers and profiles can expose more semantic dimensions so
+coverage can move from only `handler x intent` toward richer pairs or sampled
+triples such as `handler x credential_type x outcome`.
+
+Another useful view is to separate input-side knobs from output-side coverage
+items.
+
+Input-side concepts are the things generation can choose or construct before
+execution:
+
+- profiles and profile dimensions
+- operation input shapes
+- selected handler and stage context
+- materializer parameters
+- random seed and mutation choices
+
+Output-side concepts are the things expected or observed after execution:
+
+- semantic intents or observed behaviors
+- outcomes
+- touched target functions
+- code statements and branches
+- exceptions or post-state effects
+
+Input coverage asks whether the generated suite covers the abstract state and
+operation-input shapes we intended to construct. Output coverage asks whether
+the suite triggers the intended behaviors, outcomes, and code coverage items.
+Interaction coverage connects the two, for example `credential_type x outcome`,
+`queue_state x branch`, or `handler x intent x outcome`.
+
+This gives models three related roles:
+
+1. **Define input coverage.** A model solution corresponds to an abstract test
+   case or profile, and therefore to a point in an input coverage space.
+2. **Approximate the input-output relation.** A model can estimate which input
+   aspects are likely to trigger desired intents, outcomes, or branches.
+3. **Guide input-output coverage.** Coverage feedback can identify missing
+   input/output combinations, then models and materializers can try to produce
+   inputs that cover them.
+
+Intents are especially related to this inverse problem. An intent names a
+desired behavior, then generation asks which state and input aspects should be
+constructed to trigger it. Today that inverse map is mostly hand-coded in
+materializers: `queue_full` fills a queue, `source_inactive` changes activation
+status, `period_boundary` chooses a boundary slot, and `bad_signature` corrupts
+a signature. Future models can make this more declarative by constraining or
+scoring profiles that are expected to trigger the desired behavior. When the
+model is approximate, the pyspec runner remains the oracle and coverage
+feedback tells us whether the suggested inputs actually reached the target.
+
+## Generation Modes
+
+This gives two complementary generation modes.
+
+**Simple generation** is input-first. It samples or enumerates input-side
+aspects, such as profiles, operation input classes, handlers, stages, seeds, or
+mutation choices. The generated vectors are then run against the pyspec, and
+the resulting outcomes, semantic behaviors, and code coverage are observed.
+This mode is useful for broad exploration and input coverage.
+
+**Guided generation** is target-first. It samples an output-side coverage item
+or an input-output interaction, then uses an inverse map to construct input
+aspects likely to trigger it. Targets may be semantic intents, outcomes,
+branches, target functions, or interactions such as `queue_state x branch`,
+`profile_dimension x outcome`, or `handler x credential_type x outcome`.
+Materializers currently implement much of this inverse map directly; future
+models can make the map more declarative or approximate.
+
+Both modes fit the same feedback loop:
+
+1. Choose generation mode and deterministic configuration.
+2. Produce vectors from sampled inputs or sampled targets.
+3. Run vectors against the pyspec.
+4. Measure input coverage, semantic coverage, interaction coverage, and code
+   coverage.
+5. Use gaps to adjust models, intents, materializers, or sampled targets.
+
 ## Implemented Coverage
 
 ### Operations
@@ -170,9 +292,10 @@ Current reporting includes:
 
 ### Semantic Interaction Coverage
 
-Semantic interaction coverage is a planned extension. The idea is to measure
-coverage of meaningful pairs of semantic dimensions, not only individual
-intents.
+Semantic interaction coverage measures combinations of semantic dimensions, not
+only individual intents. Observed pairwise reporting is implemented; expected,
+constrained, and sampled higher-order interaction targets remain future
+extensions.
 
 Examples:
 
@@ -187,9 +310,9 @@ Examples:
 This can help answer whether generated tests cover interactions between
 important concepts, instead of only covering each concept independently.
 
-#### Possible Modes
+#### Modes
 
-1. **Observed pair coverage**
+1. **Observed pair coverage** (implemented)
    - Report every pair observed in generated vectors.
    - Useful for exploration and debugging model shape.
 
