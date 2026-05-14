@@ -4,6 +4,7 @@ description: Aggregate Electra state-transition campaign over guided suites.
 suites:
   - electra_operations_guided
   - electra_validator_lifecycle_guided
+  - electra_participation_finality_guided
 
 coverage:
   output: state_transition_coverage_campaign

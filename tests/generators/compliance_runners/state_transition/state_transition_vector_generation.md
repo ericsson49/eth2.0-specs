@@ -612,6 +612,7 @@ For reproducible suite generation, use a checked-in suite config:
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_validator_lifecycle_guided --coverage --summary
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_participation_finality_guided --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --check-reproducible
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_campaign --campaign electra_state_transition
 ```
@@ -626,7 +627,9 @@ validation or semantic coverage reports.
 Suite configs may list handlers directly or name ontology stages. The first
 stage profile is `validator_lifecycle`, expanding to `registry_updates`,
 `slashings`, `effective_balance_updates`, `pending_deposits`, and
-`pending_consolidations`:
+`pending_consolidations`. The `participation_finality` stage expands to
+`justification_and_finalization`, `inactivity_updates`, `rewards_and_penalties`,
+and `participation_flag_updates`:
 
 ```yaml
 generation:

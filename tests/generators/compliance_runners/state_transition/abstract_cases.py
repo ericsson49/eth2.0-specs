@@ -38,6 +38,9 @@ HANDLER_NAMES = (
     "registry_updates",
     "slashings",
     "justification_and_finalization",
+    "inactivity_updates",
+    "rewards_and_penalties",
+    "participation_flag_updates",
 )
 
 GUIDED_OPERATION_INTENTS = guided_operation_intents()
@@ -182,6 +185,12 @@ def is_materializable_for_handler(profile: dict[str, Any], handler_name: str) ->
     if handler_name == "slashings":
         return True
     if handler_name == "justification_and_finalization":
+        return True
+    if handler_name == "inactivity_updates":
+        return True
+    if handler_name == "rewards_and_penalties":
+        return True
+    if handler_name == "participation_flag_updates":
         return True
     raise ValueError(f"Unknown handler: {handler_name}")
 

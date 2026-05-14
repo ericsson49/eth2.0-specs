@@ -48,6 +48,9 @@ MATERIALIZED_HANDLER_NAMES = (
     "registry_updates",
     "slashings",
     "justification_and_finalization",
+    "inactivity_updates",
+    "rewards_and_penalties",
+    "participation_flag_updates",
 )
 VALIDATOR_INDEX = 0
 TARGET_VALIDATOR_INDEX = 1
@@ -183,9 +186,15 @@ def materialize_case(
         return materialize_registry_updates(spec, state, test_case, abstract_case.profile)
     if abstract_case.handler_name == "slashings":
         return materialize_slashings(spec, state, test_case, abstract_case.profile)
-    return materialize_justification_and_finalization(
-        spec, state, test_case, abstract_case.profile
-    )
+    if abstract_case.handler_name == "justification_and_finalization":
+        return materialize_justification_and_finalization(
+            spec, state, test_case, abstract_case.profile
+        )
+    if abstract_case.handler_name == "inactivity_updates":
+        return materialize_inactivity_updates(spec, state, test_case, abstract_case.profile)
+    if abstract_case.handler_name == "rewards_and_penalties":
+        return materialize_rewards_and_penalties(spec, state, test_case, abstract_case.profile)
+    return materialize_participation_flag_updates(spec, state, test_case, abstract_case.profile)
 
 
 def materialize_proposer_slashing(
@@ -456,11 +465,84 @@ def materialize_justification_and_finalization(
     )
 
 
+def materialize_inactivity_updates(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_inactivity_updates(spec, state, profile)
+    return materialize_epoch_processor(
+        spec.process_inactivity_updates,
+        state,
+        test_case,
+        profile,
+    )
+
+
+def materialize_rewards_and_penalties(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_rewards_and_penalties(spec, state, profile)
+    return materialize_epoch_processor(
+        spec.process_rewards_and_penalties,
+        state,
+        test_case,
+        profile,
+    )
+
+
+def materialize_participation_flag_updates(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_participation_flag_updates(spec, state, profile)
+    return materialize_epoch_processor(
+        spec.process_participation_flag_updates,
+        state,
+        test_case,
+        profile,
+    )
+
+
+def materialize_epoch_processor(process_fn, state, test_case: TestCase, profile: dict[str, Any]):
+    pre_state = state.copy()
+    case_parts = [TestCasePart(("pre", "ssz", serialize(pre_state)))]
+    try:
+        process_fn(state)
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
 def runner_name_for_handler(handler_name: str) -> str:
     if handler_name in (
         "justification_and_finalization",
         "registry_updates",
         "slashings",
+        "inactivity_updates",
+        "rewards_and_penalties",
+        "participation_flag_updates",
         "pending_deposits",
         "pending_consolidations",
         "effective_balance_updates",
@@ -1873,6 +1955,95 @@ def prepare_state_for_finalization_pattern(
         state.justification_bits[bit_index] = True
     for epoch in supported_epochs:
         set_epoch_target_participation(spec, state, epoch)
+
+
+def prepare_state_for_inactivity_updates(spec, state, profile: dict[str, Any]) -> None:
+    intent = profile.get("guide_intent")
+    if intent == "genesis_skip":
+        state.slot = spec.compute_start_slot_at_epoch(spec.GENESIS_EPOCH)
+        state.inactivity_scores[VALIDATOR_INDEX] = spec.uint64(7)
+        return
+
+    setup_participation_epoch_state(spec, state, leak=intent == "non_participating_leak")
+    state.inactivity_scores[VALIDATOR_INDEX] = spec.uint64(5)
+
+    if intent in (None, "participating_recovery"):
+        set_epoch_target_participation(spec, state, spec.get_previous_epoch(state))
+    elif intent in ("non_participating_no_leak", "non_participating_leak"):
+        clear_participation(spec, state)
+    else:
+        raise ValueError(f"Unsupported inactivity updates guide intent: {intent}")
+
+
+def prepare_state_for_rewards_and_penalties(spec, state, profile: dict[str, Any]) -> None:
+    intent = profile.get("guide_intent")
+    if intent == "genesis_skip":
+        state.slot = spec.compute_start_slot_at_epoch(spec.GENESIS_EPOCH)
+        return
+
+    setup_participation_epoch_state(
+        spec,
+        state,
+        leak=intent in ("inactivity_leak_penalty", "inactivity_leak_full_participation"),
+    )
+    state.inactivity_scores[VALIDATOR_INDEX] = spec.uint64(16)
+    if intent in (None, "full_participation_reward", "inactivity_leak_full_participation"):
+        set_full_participation_flags(spec, state, previous=True, current=False)
+    elif intent in ("empty_participation_penalty", "inactivity_leak_penalty"):
+        clear_participation(spec, state)
+    else:
+        raise ValueError(f"Unsupported rewards and penalties guide intent: {intent}")
+
+
+def prepare_state_for_participation_flag_updates(spec, state, profile: dict[str, Any]) -> None:
+    transition_to(spec, state, spec.compute_start_slot_at_epoch(spec.Epoch(2)))
+    clear_participation(spec, state)
+    intent = profile.get("guide_intent")
+    if intent in (None, "all_zero"):
+        return
+    if intent == "current_filled":
+        set_full_participation_flags(spec, state, previous=False, current=True)
+    elif intent == "previous_filled":
+        set_full_participation_flags(spec, state, previous=True, current=False)
+    else:
+        raise ValueError(f"Unsupported participation flag updates guide intent: {intent}")
+
+
+def setup_participation_epoch_state(spec, state, *, leak: bool) -> None:
+    current_epoch = spec.Epoch(spec.MIN_EPOCHS_TO_INACTIVITY_PENALTY + 2 if leak else 2)
+    transition_to(spec, state, spec.compute_start_slot_at_epoch(current_epoch))
+    finalized_epoch = spec.GENESIS_EPOCH if leak else spec.Epoch(current_epoch - 1)
+    state.finalized_checkpoint = spec.Checkpoint(
+        epoch=finalized_epoch,
+        root=spec.get_block_root(state, finalized_epoch),
+    )
+    for index, validator in enumerate(state.validators):
+        validator.slashed = False
+        validator.activation_eligibility_epoch = spec.Epoch(0)
+        validator.activation_epoch = spec.Epoch(0)
+        validator.exit_epoch = spec.FAR_FUTURE_EPOCH
+        validator.withdrawable_epoch = spec.FAR_FUTURE_EPOCH
+        validator.effective_balance = spec.MIN_ACTIVATION_BALANCE
+        state.balances[index] = spec.MIN_ACTIVATION_BALANCE
+        state.inactivity_scores[index] = spec.uint64(0)
+    clear_participation(spec, state)
+
+
+def clear_participation(spec, state) -> None:
+    for index in range(len(state.validators)):
+        state.previous_epoch_participation[index] = spec.ParticipationFlags(0)
+        state.current_epoch_participation[index] = spec.ParticipationFlags(0)
+
+
+def set_full_participation_flags(spec, state, *, previous: bool, current: bool) -> None:
+    full_flags = spec.ParticipationFlags(0)
+    for flag_index in range(len(spec.PARTICIPATION_FLAG_WEIGHTS)):
+        full_flags = spec.add_flag(full_flags, flag_index)
+    for index in range(len(state.validators)):
+        if previous:
+            state.previous_epoch_participation[index] = full_flags
+        if current:
+            state.current_epoch_participation[index] = full_flags
 
 
 def profile_epoch(spec, current_epoch, relation: str):

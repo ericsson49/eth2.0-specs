@@ -43,6 +43,9 @@ EPOCH_PROCESSORS = {
     "pending_deposits": "process_pending_deposits",
     "pending_consolidations": "process_pending_consolidations",
     "effective_balance_updates": "process_effective_balance_updates",
+    "inactivity_updates": "process_inactivity_updates",
+    "rewards_and_penalties": "process_rewards_and_penalties",
+    "participation_flag_updates": "process_participation_flag_updates",
 }
 
 StateTransitionTestInfo = namedtuple(

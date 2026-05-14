@@ -21,6 +21,9 @@ generation:
     - registry_updates
     - slashings
     - justification_and_finalization
+    - inactivity_updates
+    - rewards_and_penalties
+    - participation_flag_updates
   per_handler_limit: 40
   guided: true
   changed_only: false

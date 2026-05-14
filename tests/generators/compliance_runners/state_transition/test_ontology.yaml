@@ -7,6 +7,13 @@ stages:
       - effective_balance_updates
       - pending_deposits
       - pending_consolidations
+  participation_finality:
+    description: Finality, inactivity, rewards, penalties, and participation flag rotation.
+    handlers:
+      - justification_and_finalization
+      - inactivity_updates
+      - rewards_and_penalties
+      - participation_flag_updates
 
 targets:
   operations:
@@ -50,6 +57,17 @@ targets:
     slashings:
       functions:
         - process_slashings
+    inactivity_updates:
+      functions:
+        - process_inactivity_updates
+    rewards_and_penalties:
+      functions:
+        - process_rewards_and_penalties
+        - get_flag_index_deltas
+        - get_inactivity_penalty_deltas
+    participation_flag_updates:
+      functions:
+        - process_participation_flag_updates
     pending_deposits:
       functions:
         - process_pending_deposits
@@ -244,6 +262,36 @@ intents:
         outcome: no_change
       zero_slashing_balance:
         outcome: no_change
+
+    inactivity_updates:
+      genesis_skip:
+        outcome: no_change
+      participating_recovery:
+        outcome: changed
+      non_participating_no_leak:
+        outcome: changed
+      non_participating_leak:
+        outcome: changed
+
+    rewards_and_penalties:
+      genesis_skip:
+        outcome: no_change
+      full_participation_reward:
+        outcome: changed
+      empty_participation_penalty:
+        outcome: changed
+      inactivity_leak_penalty:
+        outcome: changed
+      inactivity_leak_full_participation:
+        outcome: no_change
+
+    participation_flag_updates:
+      all_zero:
+        outcome: no_change
+      current_filled:
+        outcome: changed
+      previous_filled:
+        outcome: changed
 
     pending_deposits:
       success_top_up:
