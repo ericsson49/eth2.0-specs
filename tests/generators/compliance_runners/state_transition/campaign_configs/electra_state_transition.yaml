@@ -1,5 +1,6 @@
 name: electra_state_transition
 description: Aggregate Electra state-transition campaign over guided suites.
+output: state_transition_tests/electra_state_transition
 
 suites:
   - electra_operations_guided

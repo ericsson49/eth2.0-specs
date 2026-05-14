@@ -1,8 +1,7 @@
 name: electra_operations_guided
-description: Guided Electra operation vectors backed by the state-transition test ontology.
+description: Guided Electra operation vectors not owned by a stage suite.
 
 generation:
-  output: state_transition_tests_guided
   fork: electra
   preset: minimal
   handlers:
@@ -15,21 +14,6 @@ generation:
     - voluntary_exit
     - withdrawal_request
     - consolidation_request
-    - pending_deposits
-    - pending_consolidations
-    - effective_balance_updates
-    - registry_updates
-    - slashings
-    - justification_and_finalization
-    - inactivity_updates
-    - rewards_and_penalties
-    - participation_flag_updates
-    - slashings_reset
-    - randao_mixes_reset
-    - eth1_data_reset
-    - historical_summaries_update
-    - sync_committee_updates
-    - sync_aggregate
   per_handler_limit: 40
   guided: true
   changed_only: false
@@ -38,7 +22,6 @@ generation:
   keep_existing: false
 
 coverage:
-  output: state_transition_coverage_guided
   ontology: tests/generators/compliance_runners/state_transition/test_ontology.yaml
   html: true
   annotate: true

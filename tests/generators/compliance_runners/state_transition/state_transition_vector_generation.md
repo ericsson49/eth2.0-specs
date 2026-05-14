@@ -621,7 +621,13 @@ uv run --extra test python -m tests.generators.compliance_runners.state_transiti
 
 The default guided Electra operations profile lives in
 `suite_configs/electra_operations_guided.yaml` and fixes the fork, preset,
-handlers, generation mode, output directories, and coverage settings.
+non-stage operation handlers, generation mode, and coverage settings. Stage
+owned handlers, including epoch-processing handlers and `sync_aggregate`, live
+in stage-specific suite configs instead. If `run_suite --output` is not
+provided, the suite runner derives the vector output directory as
+`state_transition_tests/<suite-name>`. If `run_suite --coverage-output` is not
+provided, it derives the coverage output directory as
+`state_transition_coverage/<suite-name>`.
 When `keep_existing` is false, the suite runner removes the configured vector
 output directory before regenerating, preventing stale cases from affecting
 validation or semantic coverage reports.
@@ -680,11 +686,12 @@ temporary directories and compares all emitted files byte-for-byte. Use
 difference.
 
 Coverage campaigns aggregate multiple generated suites under one ontology-level
-reporting unit. Campaign configs live in `campaign_configs/` and list suite
-configs plus aggregate coverage settings:
+reporting unit. Campaign configs live in `campaign_configs/` and list
+non-overlapping suite configs plus aggregate coverage settings:
 
 ```yaml
 name: electra_state_transition
+output: state_transition_tests/electra_state_transition
 suites:
   - electra_operations_guided
   - electra_validator_lifecycle_guided
@@ -696,7 +703,12 @@ coverage:
 
 The campaign runner generates each suite, validates all generated directories,
 measures coverage in one `coverage.py` session, and prints a combined health
-summary. Campaign summaries include a stage view derived from
+summary. `run_campaign --output` overrides the campaign vector output root;
+otherwise the campaign uses its configured `output` path, or
+`state_transition_tests/<campaign-name>` when no path is configured. All suites
+are generated into that single root; the reference-test path already includes
+the suite name under each handler, so the vectors remain separated without an
+extra filesystem layer. Campaign summaries include a stage view derived from
 `test_ontology.yaml`, with case counts, outcome counts, semantic intent totals,
 and target coverage totals per ontology stage. The lower-level coverage tool
 also accepts repeated `--test-dir` arguments for direct aggregate reporting.

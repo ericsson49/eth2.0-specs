@@ -2,7 +2,6 @@ name: electra_validator_lifecycle_guided
 description: Guided Electra validator lifecycle stage vectors backed by the state-transition test ontology.
 
 generation:
-  output: state_transition_tests_validator_lifecycle
   fork: electra
   preset: minimal
   stages:
@@ -15,7 +14,6 @@ generation:
   keep_existing: false
 
 coverage:
-  output: state_transition_coverage_validator_lifecycle
   ontology: tests/generators/compliance_runners/state_transition/test_ontology.yaml
   html: true
   annotate: true

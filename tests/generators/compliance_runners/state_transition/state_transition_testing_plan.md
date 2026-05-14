@@ -113,6 +113,7 @@ Implemented:
 - deterministic distribution controls for generated suite shape
 - stage-aware campaign summaries
 - observed pairwise semantic interaction coverage
+- non-overlapping campaign suite ownership
 
 ### Committee and Sync Stage
 
@@ -252,7 +253,7 @@ then add expected/constrained pairs once the useful dimensions are clearer.
 
 - Should stage-specific models eventually replace the single validator-state
   model for epoch-processing stages?
-- How much overlap between suites should campaigns allow before deduplication
-  is useful?
+- Should campaigns ever allow intentional suite overlap, or should overlap stay
+  limited to ad hoc/manual comparisons?
 - Should campaigns report both raw vectors and unique semantic intents?
 - Which semantic dimensions are stable enough to encode in ontology now?

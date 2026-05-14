@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 from pathlib import Path
 
 from .run_suite import generate_from_config, measure_from_config, validate_suites
-from .suite_config import read_yaml, resolve_campaign_config_path, resolve_suite_config_path
+from .suite_config import (
+    default_campaign_output_dir,
+    read_yaml,
+    resolve_campaign_config_path,
+    resolve_suite_config_path,
+)
 from .summarize_suite import summarize_suite
 
 
@@ -47,6 +53,11 @@ def main() -> None:
         help="Override campaign coverage output directory.",
     )
     parser.add_argument(
+        "--output",
+        type=Path,
+        help="Override campaign vector output root directory.",
+    )
+    parser.add_argument(
         "--summary-output",
         type=Path,
         help="Optional file to write the campaign health summary to.",
@@ -55,12 +66,17 @@ def main() -> None:
 
     campaign_config_path = resolve_campaign_config_path(args.campaign)
     campaign_config = read_yaml(campaign_config_path)
-    suite_runs = resolve_campaign_suites(campaign_config)
-    output_dirs = [suite_run.output_dir for suite_run in suite_runs]
+    output_root = args.output or default_campaign_output_dir(campaign_config, campaign_config_path)
+    suite_runs = resolve_campaign_suites(campaign_config, output_root=output_root)
+    output_dirs = [output_root]
 
     if args.generate:
+        if output_root.exists():
+            shutil.rmtree(output_root)
         for suite_run in suite_runs:
-            generate_from_config(suite_run.generation_config, suite_run.output_dir)
+            generation_config = dict(suite_run.generation_config)
+            generation_config["keep_existing"] = True
+            generate_from_config(generation_config, suite_run.output_dir)
 
     if args.validate and not args.coverage:
         validate_suites(output_dirs)
@@ -90,28 +106,32 @@ class CampaignSuiteRun:
         self.output_dir = output_dir
 
 
-def resolve_campaign_suites(campaign_config: dict) -> list[CampaignSuiteRun]:
+def resolve_campaign_suites(campaign_config: dict, *, output_root: Path) -> list[CampaignSuiteRun]:
     suite_runs = []
     for suite_entry in campaign_config["suites"]:
-        suite_name, output_override = normalize_suite_entry(suite_entry)
-        suite_config = read_yaml(resolve_suite_config_path(suite_name))
+        suite_name = normalize_suite_entry(suite_entry)
+        suite_config_path = resolve_suite_config_path(suite_name)
+        suite_config = read_yaml(suite_config_path)
         generation_config = dict(suite_config["generation"])
-        if output_override is not None:
-            generation_config["output"] = str(output_override)
         suite_runs.append(
             CampaignSuiteRun(
                 generation_config=generation_config,
-                output_dir=Path(generation_config["output"]),
+                output_dir=output_root,
             )
         )
     return suite_runs
 
 
-def normalize_suite_entry(suite_entry) -> tuple[str, Path | None]:
+def normalize_suite_entry(suite_entry) -> str:
     if isinstance(suite_entry, str):
-        return suite_entry, None
+        return suite_entry
     if isinstance(suite_entry, dict):
-        return suite_entry["suite"], Path(suite_entry["output"]) if "output" in suite_entry else None
+        if "output" in suite_entry:
+            raise ValueError(
+                "Campaign suite entries cannot define per-suite output paths. "
+                "Use run_campaign --output or campaign-level output instead."
+            )
+        return suite_entry["suite"]
     raise TypeError(f"Unsupported suite entry: {suite_entry!r}")
 
 

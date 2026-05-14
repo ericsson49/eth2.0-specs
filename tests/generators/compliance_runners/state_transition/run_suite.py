@@ -10,7 +10,12 @@ import pytest
 
 from .check_reproducible import check_suite_reproducible
 from .generate_vectors import generate_vectors, normalize_handlers
-from .suite_config import read_yaml, resolve_suite_config_path
+from .suite_config import (
+    default_suite_coverage_dir,
+    default_suite_output_dir,
+    read_yaml,
+    resolve_suite_config_path,
+)
 from .summarize_suite import summarize_suite
 
 RUNNER_TEST = Path("tests/generators/compliance_runners/state_transition/runner/test_run.py")
@@ -79,7 +84,7 @@ def main() -> None:
     suite_config_path = resolve_suite_config_path(args.suite)
     suite_config = read_yaml(suite_config_path)
     generation_config = suite_config["generation"]
-    output_dir = args.output or Path(generation_config["output"])
+    output_dir = args.output or default_suite_output_dir(suite_config, suite_config_path)
 
     if args.generate:
         generate_from_config(generation_config, output_dir)
@@ -89,11 +94,17 @@ def main() -> None:
 
     if args.coverage:
         coverage_config = suite_config.get("coverage", {})
-        coverage_output = args.coverage_output or Path(coverage_config["output"])
+        coverage_output = args.coverage_output or default_suite_coverage_dir(
+            suite_config,
+            suite_config_path,
+        )
         measure_from_config(coverage_config, test_dir=output_dir, output_dir=coverage_output)
     else:
         coverage_config = suite_config.get("coverage", {})
-        coverage_output = args.coverage_output or Path(coverage_config.get("output", ""))
+        coverage_output = args.coverage_output or default_suite_coverage_dir(
+            suite_config,
+            suite_config_path,
+        )
 
     if args.summary:
         ontology_path = coverage_config.get("ontology")
