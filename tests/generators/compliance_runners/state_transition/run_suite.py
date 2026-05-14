@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from .check_reproducible import check_suite_reproducible
-from .generate_vectors import generate_vectors
+from .generate_vectors import generate_vectors, normalize_handlers
 from .suite_config import read_yaml, resolve_suite_config_path
 from .summarize_suite import summarize_suite
 
@@ -127,7 +127,10 @@ def generate_from_config(generation_config: dict, output_dir: Path) -> None:
         output_dir=output_dir,
         fork_name=generation_config["fork"],
         preset_name=generation_config["preset"],
-        handlers=generation_config["handlers"],
+        handlers=normalize_handlers(
+            generation_config.get("handlers"),
+            stages=generation_config.get("stages"),
+        ),
         per_handler_limit=generation_config["per_handler_limit"],
         changed_only=generation_config.get("changed_only", False),
         unchanged_only=generation_config.get("unchanged_only", False),

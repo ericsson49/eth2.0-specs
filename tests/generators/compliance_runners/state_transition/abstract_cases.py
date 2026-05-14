@@ -36,6 +36,7 @@ HANDLER_NAMES = (
     "pending_consolidations",
     "effective_balance_updates",
     "registry_updates",
+    "slashings",
     "justification_and_finalization",
 )
 
@@ -177,6 +178,8 @@ def is_materializable_for_handler(profile: dict[str, Any], handler_name: str) ->
     if handler_name == "effective_balance_updates":
         return True
     if handler_name == "registry_updates":
+        return True
+    if handler_name == "slashings":
         return True
     if handler_name == "justification_and_finalization":
         return True

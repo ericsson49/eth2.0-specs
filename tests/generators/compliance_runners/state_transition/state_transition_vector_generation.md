@@ -611,6 +611,7 @@ For reproducible suite generation, use a checked-in suite config:
 ```bash
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage --summary
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_validator_lifecycle_guided --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --check-reproducible
 ```
 
@@ -620,6 +621,17 @@ handlers, generation mode, output directories, and coverage settings.
 When `keep_existing` is false, the suite runner removes the configured vector
 output directory before regenerating, preventing stale cases from affecting
 validation or semantic coverage reports.
+
+Suite configs may list handlers directly or name ontology stages. The first
+stage profile is `validator_lifecycle`, expanding to `registry_updates`,
+`slashings`, `effective_balance_updates`, `pending_deposits`, and
+`pending_consolidations`:
+
+```yaml
+generation:
+  stages:
+    - validator_lifecycle
+```
 
 Suite configs can optionally add deterministic distribution quotas. The
 generator still materializes candidates in stable order, but only writes cases

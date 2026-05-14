@@ -19,6 +19,7 @@ generation:
     - pending_consolidations
     - effective_balance_updates
     - registry_updates
+    - slashings
     - justification_and_finalization
   per_handler_limit: 40
   guided: true

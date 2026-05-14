@@ -39,6 +39,7 @@ OPERATION_PROCESSORS = {
 EPOCH_PROCESSORS = {
     "justification_and_finalization": "process_justification_and_finalization",
     "registry_updates": "process_registry_updates",
+    "slashings": "process_slashings",
     "pending_deposits": "process_pending_deposits",
     "pending_consolidations": "process_pending_consolidations",
     "effective_balance_updates": "process_effective_balance_updates",

@@ -46,6 +46,7 @@ MATERIALIZED_HANDLER_NAMES = (
     "pending_consolidations",
     "effective_balance_updates",
     "registry_updates",
+    "slashings",
     "justification_and_finalization",
 )
 VALIDATOR_INDEX = 0
@@ -180,6 +181,8 @@ def materialize_case(
         )
     if abstract_case.handler_name == "registry_updates":
         return materialize_registry_updates(spec, state, test_case, abstract_case.profile)
+    if abstract_case.handler_name == "slashings":
+        return materialize_slashings(spec, state, test_case, abstract_case.profile)
     return materialize_justification_and_finalization(
         spec, state, test_case, abstract_case.profile
     )
@@ -389,6 +392,38 @@ def materialize_registry_updates(
     )
 
 
+def materialize_slashings(
+    spec,
+    state,
+    test_case: TestCase,
+    profile: dict[str, Any],
+) -> TestCaseResult:
+    prepare_state_for_slashings(spec, state, profile)
+
+    pre_state = state.copy()
+    case_parts = [TestCasePart(("pre", "ssz", serialize(pre_state)))]
+    try:
+        spec.process_slashings(state)
+    except AssertionError:
+        return TestCaseResult(
+            test_case=test_case,
+            meta=operation_meta(profile, operation_valid=False, post_state_changed=None),
+            case_parts=case_parts,
+        )
+
+    post_state_changed = pre_state != state
+    case_parts.append(TestCasePart(("post", "ssz", serialize(state))))
+    return TestCaseResult(
+        test_case=test_case,
+        meta=operation_meta(
+            profile,
+            operation_valid=True,
+            post_state_changed=post_state_changed,
+        ),
+        case_parts=case_parts,
+    )
+
+
 def materialize_justification_and_finalization(
     spec,
     state,
@@ -425,6 +460,7 @@ def runner_name_for_handler(handler_name: str) -> str:
     if handler_name in (
         "justification_and_finalization",
         "registry_updates",
+        "slashings",
         "pending_deposits",
         "pending_consolidations",
         "effective_balance_updates",
@@ -1691,6 +1727,41 @@ def prepare_state_for_registry_updates(spec, state, profile: dict[str, Any]) -> 
         state.finalized_checkpoint.epoch = current_epoch
     else:
         raise ValueError(f"Unsupported registry updates guide intent: {intent}")
+
+
+def prepare_state_for_slashings(spec, state, profile: dict[str, Any]) -> None:
+    current_epoch = spec.Epoch(spec.EPOCHS_PER_SLASHINGS_VECTOR // 2 + 2)
+    state.slot = spec.compute_start_slot_at_epoch(current_epoch)
+    state.slashings = spec.Vector[spec.Gwei, spec.EPOCHS_PER_SLASHINGS_VECTOR](
+        [spec.Gwei(0)] * spec.EPOCHS_PER_SLASHINGS_VECTOR
+    )
+
+    index = VALIDATOR_INDEX
+    validator = state.validators[index]
+    validator.activation_eligibility_epoch = spec.Epoch(0)
+    validator.activation_epoch = spec.Epoch(0)
+    validator.exit_epoch = spec.Epoch(0)
+    validator.withdrawable_epoch = spec.Epoch(
+        current_epoch + spec.EPOCHS_PER_SLASHINGS_VECTOR // 2
+    )
+    validator.effective_balance = spec.MIN_ACTIVATION_BALANCE
+    state.balances[index] = spec.MIN_ACTIVATION_BALANCE
+
+    intent = profile.get("guide_intent")
+    if intent in (None, "penalty_applied"):
+        validator.slashed = True
+        state.slashings[0] = spec.Gwei(spec.get_total_active_balance(state))
+    elif intent == "no_slashed_validators":
+        validator.slashed = False
+        state.slashings[0] = spec.Gwei(spec.get_total_active_balance(state))
+    elif intent == "wrong_withdrawable_epoch":
+        validator.slashed = True
+        validator.withdrawable_epoch = spec.Epoch(validator.withdrawable_epoch + 1)
+        state.slashings[0] = spec.Gwei(spec.get_total_active_balance(state))
+    elif intent == "zero_slashing_balance":
+        validator.slashed = True
+    else:
+        raise ValueError(f"Unsupported slashings guide intent: {intent}")
 
 
 def prepare_state_for_justification_and_finalization(

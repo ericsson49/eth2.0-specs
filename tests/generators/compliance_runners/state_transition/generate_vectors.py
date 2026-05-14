@@ -15,9 +15,11 @@ from tests.infra.dumper import Dumper
 from .abstract_cases import (
     enumerate_guided_operation_cases,
     enumerate_materializable_operation_cases,
+    HANDLER_NAMES,
     select_abstract_cases,
 )
 from .materializers import materialize_case, MATERIALIZED_HANDLER_NAMES, UnsupportedProfileError
+from .ontology import stage_handlers
 
 configure_generator_context()
 
@@ -58,6 +60,11 @@ def main() -> None:
             "Use 'all' for every materialized state-transition handler."
         ),
     )
+    parser.add_argument(
+        "--stage",
+        action="append",
+        help="Named handler stage from the ontology, e.g. validator_lifecycle. Can be repeated.",
+    )
     parser.add_argument("--keep-existing", action="store_true")
     args = parser.parse_args()
 
@@ -65,7 +72,7 @@ def main() -> None:
         output_dir=args.output,
         fork_name=args.fork,
         preset_name=args.preset,
-        handlers=normalize_handlers(args.handler),
+        handlers=normalize_handlers(args.handler, stages=args.stage),
         per_handler_limit=args.per_handler_limit,
         changed_only=args.changed_only,
         unchanged_only=args.unchanged_only,
@@ -75,12 +82,26 @@ def main() -> None:
     )
 
 
-def normalize_handlers(handlers: list[str] | None) -> list[str]:
-    requested_handlers = handlers or ["withdrawal_request"]
+def normalize_handlers(
+    handlers: list[str] | None,
+    *,
+    stages: list[str] | None = None,
+) -> list[str]:
+    requested_handlers = list(handlers or [])
+    stage_map = stage_handlers()
+    for stage in stages or []:
+        if stage not in stage_map:
+            raise ValueError(f"Unknown stage: {stage}")
+        requested_handlers.extend(stage_map[stage])
+    if not requested_handlers:
+        requested_handlers = ["withdrawal_request"]
     if "all" in requested_handlers:
         requested_handlers = list(MATERIALIZED_HANDLER_NAMES) + [
             handler for handler in requested_handlers if handler != "all"
         ]
+    unknown_handlers = set(requested_handlers) - set(HANDLER_NAMES)
+    if unknown_handlers:
+        raise ValueError(f"Unknown handlers: {sorted(unknown_handlers)}")
     return list(dict.fromkeys(requested_handlers))
 
 

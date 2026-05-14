@@ -31,6 +31,14 @@ def guided_operation_intents(ontology: dict[str, Any] | None = None) -> dict[str
     }
 
 
+def stage_handlers(ontology: dict[str, Any] | None = None) -> dict[str, tuple[str, ...]]:
+    ontology = ontology or load_test_ontology()
+    return {
+        stage_name: tuple(stage_data["handlers"])
+        for stage_name, stage_data in ontology.get("stages", {}).items()
+    }
+
+
 def target_functions_by_runner(
     ontology: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, tuple[str, ...]]]:

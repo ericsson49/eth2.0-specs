@@ -1,3 +1,13 @@
+stages:
+  validator_lifecycle:
+    description: Activation, exit, slashing, effective balance, and Electra pending queues.
+    handlers:
+      - registry_updates
+      - slashings
+      - effective_balance_updates
+      - pending_deposits
+      - pending_consolidations
+
 targets:
   operations:
     proposer_slashing:
@@ -37,6 +47,9 @@ targets:
     registry_updates:
       functions:
         - process_registry_updates
+    slashings:
+      functions:
+        - process_slashings
     pending_deposits:
       functions:
         - process_pending_deposits
@@ -221,6 +234,16 @@ intents:
         outcome: changed
       activation:
         outcome: changed
+
+    slashings:
+      no_slashed_validators:
+        outcome: no_change
+      penalty_applied:
+        outcome: changed
+      wrong_withdrawable_epoch:
+        outcome: no_change
+      zero_slashing_balance:
+        outcome: no_change
 
     pending_deposits:
       success_top_up:
