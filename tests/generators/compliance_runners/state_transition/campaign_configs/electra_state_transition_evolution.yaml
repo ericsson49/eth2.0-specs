@@ -1,0 +1,13 @@
+name: electra_state_transition_evolution
+description: Electra state-transition campaign organized as a test-generation maturity ladder.
+output: state_transition_tests/electra_state_transition_evolution
+
+suites:
+  - electra_evolution_handler_touch
+
+coverage:
+  output: state_transition_coverage_evolution_campaign
+  ontology: tests/generators/compliance_runners/state_transition/test_ontology.yaml
+  html: true
+  annotate: true
+  json: true

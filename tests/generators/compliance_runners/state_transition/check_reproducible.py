@@ -75,6 +75,7 @@ def generate_from_config(generation_config: dict, output_dir: Path) -> None:
         unchanged_only=generation_config.get("unchanged_only", False),
         invalid_only=generation_config.get("invalid_only", False),
         guided=generation_config.get("guided", False),
+        mode=generation_config.get("mode"),
         keep_existing=False,
         distribution=generation_config.get("distribution"),
     )

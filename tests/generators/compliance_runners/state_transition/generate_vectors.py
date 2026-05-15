@@ -53,6 +53,14 @@ def main() -> None:
         help="Generate handler-specific guard-intent cases for coverage evaluation.",
     )
     parser.add_argument(
+        "--mode",
+        choices=("simple", "handler_touch", "guided"),
+        help=(
+            "Generation strategy. Defaults to 'guided' when --guided is set, "
+            "otherwise 'simple'."
+        ),
+    )
+    parser.add_argument(
         "--handler",
         action="append",
         help=(
@@ -78,6 +86,7 @@ def main() -> None:
         unchanged_only=args.unchanged_only,
         invalid_only=args.invalid_only,
         guided=args.guided,
+        mode=args.mode,
         keep_existing=args.keep_existing,
     )
 
@@ -116,6 +125,7 @@ def generate_vectors(
     unchanged_only: bool,
     invalid_only: bool,
     guided: bool,
+    mode: str | None = None,
     keep_existing: bool,
     distribution: dict[str, dict[str, int]] | None = None,
 ) -> None:
@@ -125,8 +135,11 @@ def generate_vectors(
 
     dumper = Dumper()
     distribution_tracker = DistributionTracker.from_config(distribution)
-    if guided:
+    generation_mode = normalize_generation_mode(mode, guided)
+    if generation_mode == "guided":
         abstract_cases = enumerate_guided_operation_cases(handlers=handlers)
+    elif generation_mode == "handler_touch":
+        abstract_cases = enumerate_materializable_operation_cases(handlers=handlers)
     elif changed_only or invalid_only:
         abstract_cases = enumerate_materializable_operation_cases(handlers=handlers)
     else:
@@ -165,6 +178,16 @@ def generate_vectors(
             return
         if all(count >= per_handler_limit for count in written_counts.values()):
             return
+
+
+def normalize_generation_mode(mode: str | None, guided: bool) -> str:
+    if mode is not None:
+        if mode not in ("simple", "handler_touch", "guided"):
+            raise ValueError(f"Unsupported generation mode: {mode}")
+        return mode
+    if guided:
+        return "guided"
+    return "simple"
 
 
 def materialize_with_base_state(

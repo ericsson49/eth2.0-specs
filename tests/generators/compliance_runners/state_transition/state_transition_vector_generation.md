@@ -609,6 +609,7 @@ YAML.
 For reproducible suite generation, use a checked-in suite config:
 
 ```bash
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_evolution_handler_touch --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_validator_lifecycle_guided --coverage --summary
@@ -617,6 +618,7 @@ uv run --extra test python -m tests.generators.compliance_runners.state_transiti
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_committee_sync_guided --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --check-reproducible
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_campaign --campaign electra_state_transition
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_campaign --campaign electra_state_transition_evolution
 ```
 
 The default guided Electra operations profile lives in
@@ -646,6 +648,20 @@ and `participation_flag_updates`. The `rotating_resets` stage expands to
 generation:
   stages:
     - validator_lifecycle
+```
+
+Suite configs can choose a generation mode. `simple` is the default input-first
+mode, `handler_touch` produces one shallow materialized vector per requested
+handler, and `guided` expands handlers into ontology intent cases. The legacy
+`guided: true` field is still supported and maps to `mode: guided` when `mode`
+is omitted:
+
+```yaml
+generation:
+  handlers:
+    - all
+  per_handler_limit: 1
+  mode: handler_touch
 ```
 
 Suite configs can optionally add deterministic distribution quotas. The
@@ -700,6 +716,13 @@ coverage:
   output: state_transition_coverage_campaign
   ontology: tests/generators/compliance_runners/state_transition/test_ontology.yaml
 ```
+
+The evolution campaign, `electra_state_transition_evolution`, is organized as a
+test-generation maturity ladder. It currently contains only
+`electra_evolution_handler_touch`, which establishes shallow handler coverage
+from scratch. Future phases can add profile-partition, intent-guided,
+interaction-guided, mutation, and state-corpus reuse suites under the same
+campaign shape.
 
 The campaign runner generates each suite, validates all generated directories,
 measures coverage in one `coverage.py` session, and prints a combined health

@@ -144,6 +144,11 @@ mutation choices. The generated vectors are then run against the pyspec, and
 the resulting outcomes, semantic behaviors, and code coverage are observed.
 This mode is useful for broad exploration and input coverage.
 
+**Handler-touch generation** is the first shallow rung of simple generation. It
+tries to produce one materialized vector for each handler in scope. Its goal is
+not deep semantic coverage; it establishes that each handler can be generated,
+serialized, executed, and measured.
+
 **Guided generation** is target-first. It samples an output-side coverage item
 or an input-output interaction, then uses an inverse map to construct input
 aspects likely to trigger it. Targets may be semantic intents, outcomes,
@@ -160,6 +165,12 @@ Both modes fit the same feedback loop:
 4. Measure input coverage, semantic coverage, interaction coverage, and code
    coverage.
 5. Use gaps to adjust models, intents, materializers, or sampled targets.
+
+The new evolution campaign is intended to make this ladder explicit. It
+currently starts from scratch with only a handler-touch suite. Future campaign
+phases can add profile partition suites, intent-guided suites,
+interaction-guided suites, mutation suites, and state-corpus reuse suites
+without changing the basic reporting loop.
 
 ## Implemented Coverage
 
