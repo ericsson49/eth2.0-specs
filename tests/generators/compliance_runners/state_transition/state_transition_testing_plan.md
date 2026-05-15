@@ -164,6 +164,14 @@ as an implementation-diversity rung: two states may touch similar spec code
 while still stressing very different client cache keys, indexes, and fast
 paths.
 
+**Input-profile generation** promotes knobs learned from guided materializers
+into small reusable MiniZinc models, such as operation input validity, queue
+shape, epoch-boundary shape, and participation/finality shape. Each handler
+declares the profile models that can affect it, and the sampler covers values
+from those models without running the heavier pairwise interaction suite. This
+is still input-first, but it reaches more protocol behavior because the sampled
+inputs include operation and epoch-processing shapes, not only validator state.
+
 **Guided generation** is target-first. It samples an output-side coverage item
 or an input-output interaction, then uses an inverse map to construct input
 aspects likely to trigger it. Targets may be semantic intents, outcomes,
@@ -183,9 +191,11 @@ Both modes fit the same feedback loop:
 
 The new evolution campaign is intended to make this ladder explicit. It
 currently starts from scratch with a handler-touch suite and then adds a
-profile-partition suite and a profile-interaction suite. Future campaign phases
-can add intent-guided suites, mutation suites, and state-corpus reuse suites
-without changing the basic reporting loop.
+profile-partition suite and an input-profile suite. The profile-interaction
+suite is available as an implementation-diversity experiment, but it is not in
+the default evolution campaign for now because it is heavier. Future campaign
+phases can add intent-guided suites, mutation suites, and state-corpus reuse
+suites without changing the basic reporting loop.
 
 ## Implemented Coverage
 

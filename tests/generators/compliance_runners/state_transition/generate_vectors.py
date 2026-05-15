@@ -14,6 +14,7 @@ from tests.infra.dumper import Dumper
 
 from .abstract_cases import (
     enumerate_guided_operation_cases,
+    enumerate_input_profile_cases,
     enumerate_materializable_operation_cases,
     enumerate_profile_interaction_cases,
     enumerate_profile_partition_cases,
@@ -56,7 +57,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--mode",
-        choices=("simple", "handler_touch", "profile_partition", "profile_interaction", "guided"),
+        choices=(
+            "simple",
+            "handler_touch",
+            "profile_partition",
+            "profile_interaction",
+            "input_profile",
+            "guided",
+        ),
         help=(
             "Generation strategy. Defaults to 'guided' when --guided is set, "
             "otherwise 'simple'."
@@ -171,6 +179,8 @@ def generate_vectors(
             dimensions=profile_dimensions,
             order=profile_interaction_order,
         )
+    elif generation_mode == "input_profile":
+        abstract_cases = enumerate_input_profile_cases(handlers=handlers)
     elif changed_only or invalid_only:
         abstract_cases = enumerate_materializable_operation_cases(handlers=handlers)
     else:
@@ -218,6 +228,7 @@ def normalize_generation_mode(mode: str | None, guided: bool) -> str:
             "handler_touch",
             "profile_partition",
             "profile_interaction",
+            "input_profile",
             "guided",
         ):
             raise ValueError(f"Unsupported generation mode: {mode}")

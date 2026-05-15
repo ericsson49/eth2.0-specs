@@ -109,6 +109,8 @@ def summarize_suite(
     lines.append("")
     lines.extend(format_profile_partitions(staged_cases, profile_dimensions))
     lines.append("")
+    lines.extend(format_input_profiles(staged_cases))
+    lines.append("")
     lines.extend(
         format_profile_interactions(
             staged_cases,
@@ -312,6 +314,31 @@ def format_profile_partitions(
             f"handlers {len(handlers_with_dimension)}/{handler_count}"
         )
     return lines
+
+
+def format_input_profiles(cases: list[dict[str, Any]]) -> list[str]:
+    lines = ["Input Profiles", "--------------"]
+    observed = collect_input_profiles(cases)
+    if not observed:
+        lines.append("not configured")
+        return lines
+
+    for profile_model, dimensions in sorted(observed.items()):
+        lines.append(profile_model)
+        for dimension, values in sorted(dimensions.items()):
+            value_summary = ", ".join(sorted(values))
+            lines.append(f"  {dimension}: {len(values)} values [{value_summary}]")
+    return lines
+
+
+def collect_input_profiles(cases: list[dict[str, Any]]) -> dict[str, dict[str, set[str]]]:
+    observed = defaultdict(lambda: defaultdict(set))
+    for case in cases:
+        input_profiles = case.get("profile", {}).get("input_profiles", {})
+        for profile_model, profile_values in input_profiles.items():
+            for dimension, value in profile_values.items():
+                observed[profile_model][dimension].add(str(value))
+    return observed
 
 
 def format_profile_interactions(

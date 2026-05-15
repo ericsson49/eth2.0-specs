@@ -1,0 +1,21 @@
+name: electra_evolution_input_profiles
+description: "Evolution phase 3: sample handler-specific input profile models derived from guided-generation knobs."
+
+generation:
+  fork: electra
+  preset: minimal
+  handlers:
+    - all
+  per_handler_limit: 48
+  mode: input_profile
+  guided: false
+  changed_only: false
+  unchanged_only: false
+  invalid_only: false
+  keep_existing: false
+
+coverage:
+  ontology: tests/generators/compliance_runners/state_transition/test_ontology.yaml
+  html: true
+  annotate: true
+  json: true

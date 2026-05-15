@@ -654,7 +654,8 @@ Suite configs can choose a generation mode. `simple` is the default input-first
 mode, `handler_touch` produces one shallow materialized vector per requested
 handler, `profile_partition` samples configured values from the MiniZinc
 validator-state profile model for each requested handler, `profile_interaction`
-samples combinations of profile dimensions, and `guided` expands handlers into
+samples combinations of profile dimensions, `input_profile` samples
+handler-specific input profile models, and `guided` expands handlers into
 ontology intent cases. The legacy `guided: true` field is still supported and
 maps to `mode: guided` when `mode` is omitted:
 
@@ -693,6 +694,18 @@ generation:
   per_handler_limit: 48
   mode: profile_interaction
   profile_interaction_order: 2
+```
+
+The input-profile mode composes small MiniZinc models for operation input
+validity, queue shape, epoch-boundary shape, participation/finality shape, and
+validator-state shape according to each handler's declared input profile set:
+
+```yaml
+generation:
+  handlers:
+    - all
+  per_handler_limit: 48
+  mode: input_profile
 ```
 
 Suite configs can optionally add deterministic distribution quotas. The
@@ -753,8 +766,11 @@ test-generation maturity ladder. It currently contains
 `electra_evolution_handler_touch`, which establishes shallow handler coverage
 from scratch, and `electra_evolution_profile_partitions`, which broadens input
 coverage with MiniZinc-backed profile dimensions, and
-`electra_evolution_profile_interactions`, which samples pairwise profile
-combinations. Future phases can add intent-guided, mutation, and state-corpus
+`electra_evolution_input_profiles`, which samples handler-specific input
+profiles learned from guided materializers. The pairwise
+`electra_evolution_profile_interactions` suite remains available for diversity
+experiments, but is not part of the default evolution campaign for now because
+it is heavier. Future phases can add intent-guided, mutation, and state-corpus
 reuse suites under the same campaign shape.
 
 The campaign runner generates each suite, validates all generated directories,
