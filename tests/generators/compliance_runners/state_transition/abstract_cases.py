@@ -50,6 +50,21 @@ HANDLER_NAMES = (
 )
 
 GUIDED_OPERATION_INTENTS = guided_operation_intents()
+DEFAULT_PROFILE_PARTITION_DIMENSIONS = (
+    "withdrawal_credential_type",
+    "activation_epoch_to_current_epoch",
+    "exit_epoch_to_current_epoch",
+    "withdrawable_epoch_to_current_epoch",
+    "balance_is_zero",
+    "balance_to_effective_balance",
+    "effective_balance_lte_ejection_balance",
+    "effective_balance_to_min_activation_balance",
+    "effective_balance_to_max_effective_balance",
+    "slashed",
+    "exit_epoch_set",
+    "has_pending_withdrawal_request",
+    "has_pending_consolidation_request",
+)
 
 
 def load_validator_state_model() -> str:
@@ -122,6 +137,64 @@ def enumerate_materializable_operation_cases(
         for handler_name in requested_handlers:
             if is_materializable_for_handler(profile, handler_name):
                 yield make_abstract_case(handler_name, index, profile)
+
+
+def enumerate_profile_partition_cases(
+    handlers: Iterable[str],
+    *,
+    dimensions: Iterable[str] | None = None,
+) -> Iterable[AbstractStateTransitionCase]:
+    requested_handlers = tuple(handlers)
+    unknown_handlers = set(requested_handlers) - set(HANDLER_NAMES)
+    if unknown_handlers:
+        raise ValueError(f"Unknown handlers: {sorted(unknown_handlers)}")
+
+    partition_dimensions = tuple(dimensions or DEFAULT_PROFILE_PARTITION_DIMENSIONS)
+    candidates = {
+        handler_name: {dimension: {} for dimension in partition_dimensions}
+        for handler_name in requested_handlers
+    }
+    for index, profile in enumerate(solve_validator_state_profiles()):
+        validate_profile_dimensions(profile, partition_dimensions)
+        for handler_name in requested_handlers:
+            if not is_materializable_for_handler(profile, handler_name):
+                continue
+            for dimension in partition_dimensions:
+                value = profile[dimension]
+                if value in candidates[handler_name][dimension]:
+                    continue
+                candidates[handler_name][dimension][value] = (index, profile)
+
+    for handler_name in requested_handlers:
+        max_values = max(
+            len(dimension_candidates)
+            for dimension_candidates in candidates[handler_name].values()
+        )
+        for value_index in range(max_values):
+            for dimension in partition_dimensions:
+                ordered_values = sorted(
+                    candidates[handler_name][dimension],
+                    key=profile_partition_value_sort_key,
+                )
+                if value_index >= len(ordered_values):
+                    continue
+                value = ordered_values[value_index]
+                solution_index, profile = candidates[handler_name][dimension][value]
+                profile_with_tags = dict(profile)
+                profile_with_tags["coverage_tags"] = [
+                    f"handler:{handler_name}",
+                    f"profile:{dimension}:{value}",
+                ]
+                yield make_abstract_case(
+                    handler_name,
+                    solution_index,
+                    profile_with_tags,
+                    case_name=profile_partition_case_name(
+                        dimension,
+                        value,
+                        solution_index,
+                    ),
+                )
 
 
 def enumerate_guided_operation_cases(
@@ -211,6 +284,37 @@ def is_materializable_for_handler(profile: dict[str, Any], handler_name: str) ->
     if handler_name == "sync_aggregate":
         return True
     raise ValueError(f"Unknown handler: {handler_name}")
+
+
+def validate_profile_dimensions(
+    profile: dict[str, Any],
+    dimensions: tuple[str, ...],
+) -> None:
+    unknown_dimensions = [dimension for dimension in dimensions if dimension not in profile]
+    if unknown_dimensions:
+        raise ValueError(f"Unknown profile dimensions: {unknown_dimensions}")
+
+
+def profile_partition_case_name(dimension: str, value: Any, solution_index: int) -> str:
+    return f"profile_{dimension}_{safe_case_value(value)}_{solution_index:04d}"
+
+
+def safe_case_value(value: Any) -> str:
+    text = str(value)
+    return (
+        text.replace("<", "lt")
+        .replace("=", "eq")
+        .replace(">", "gt")
+        .replace(" ", "_")
+        .replace("/", "_")
+        .lower()
+    )
+
+
+def profile_partition_value_sort_key(value: Any) -> tuple[int, str]:
+    if isinstance(value, bool):
+        return (0 if value else 1, str(value))
+    return (0, str(value))
 
 
 def make_abstract_case(

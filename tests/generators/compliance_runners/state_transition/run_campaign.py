@@ -92,6 +92,7 @@ def main() -> None:
             test_dir=output_dirs,
             ontology_path=Path(ontology_path) if ontology_path else None,
             coverage_dir=coverage_output if args.coverage or coverage_output.exists() else None,
+            profile_dimensions=campaign_profile_dimensions(suite_runs),
             title="State Transition Campaign Summary",
         )
         print(summary)
@@ -133,6 +134,15 @@ def normalize_suite_entry(suite_entry) -> str:
             )
         return suite_entry["suite"]
     raise TypeError(f"Unsupported suite entry: {suite_entry!r}")
+
+
+def campaign_profile_dimensions(suite_runs: list[CampaignSuiteRun]) -> list[str] | None:
+    dimensions = []
+    for suite_run in suite_runs:
+        for dimension in suite_run.generation_config.get("profile_dimensions", []):
+            if dimension not in dimensions:
+                dimensions.append(dimension)
+    return dimensions or None
 
 
 if __name__ == "__main__":

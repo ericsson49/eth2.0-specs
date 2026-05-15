@@ -76,6 +76,7 @@ def generate_from_config(generation_config: dict, output_dir: Path) -> None:
         invalid_only=generation_config.get("invalid_only", False),
         guided=generation_config.get("guided", False),
         mode=generation_config.get("mode"),
+        profile_dimensions=generation_config.get("profile_dimensions"),
         keep_existing=False,
         distribution=generation_config.get("distribution"),
     )

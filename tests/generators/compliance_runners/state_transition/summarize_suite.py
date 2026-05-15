@@ -66,6 +66,9 @@ def main() -> None:
         distribution=suite_config.get("generation", {}).get("distribution")
         if suite_config
         else None,
+        profile_dimensions=suite_config.get("generation", {}).get("profile_dimensions")
+        if suite_config
+        else None,
     )
     print(summary)
     if args.output is not None:
@@ -79,6 +82,7 @@ def summarize_suite(
     ontology_path: Path | None = None,
     coverage_dir: Path | None = None,
     distribution: dict[str, dict[str, int]] | None = None,
+    profile_dimensions: list[str] | None = None,
     title: str = "State Transition Suite Summary",
 ) -> str:
     ontology = load_test_ontology(ontology_path)
@@ -95,6 +99,8 @@ def summarize_suite(
     lines.extend(format_stage_summary(staged_cases, stages, intent_outcomes, coverage_dir))
     lines.append("")
     lines.extend(format_outcome_counts(staged_cases))
+    lines.append("")
+    lines.extend(format_profile_partitions(staged_cases, profile_dimensions))
     lines.append("")
     lines.extend(
         format_interaction_summary(
@@ -256,6 +262,40 @@ def format_outcome_counts(cases: list[dict[str, Any]]) -> list[str]:
         for handler, handler_cases in sorted(group_by(runner_cases, "handler").items()):
             counts = Counter(case["outcome"] for case in handler_cases)
             lines.append(f"  {handler}: {format_counter(counts)}")
+    return lines
+
+
+def format_profile_partitions(
+    cases: list[dict[str, Any]],
+    profile_dimensions: list[str] | None,
+) -> list[str]:
+    lines = ["Profile Partitions", "------------------"]
+    if not profile_dimensions:
+        lines.append("not configured")
+        return lines
+    if not cases:
+        lines.append("No generated cases found.")
+        return lines
+
+    handler_count = len({case["handler"] for case in cases})
+    for dimension in profile_dimensions:
+        values = sorted(
+            {
+                str(case.get("profile", {}).get(dimension))
+                for case in cases
+                if dimension in case.get("profile", {})
+            }
+        )
+        handlers_with_dimension = {
+            case["handler"]
+            for case in cases
+            if dimension in case.get("profile", {})
+        }
+        value_summary = ", ".join(values) if values else "none"
+        lines.append(
+            f"{dimension}: {len(values)} values [{value_summary}], "
+            f"handlers {len(handlers_with_dimension)}/{handler_count}"
+        )
     return lines
 
 

@@ -149,6 +149,13 @@ tries to produce one materialized vector for each handler in scope. Its goal is
 not deep semantic coverage; it establishes that each handler can be generated,
 serialized, executed, and measured.
 
+**Profile-partition generation** is the next simple-generation rung. It still
+uses the shared MiniZinc validator-state profile model, but it chooses cases to
+cover values of configured input-side profile dimensions such as credential
+type, lifecycle relation, balance relation, slashing status, and pending queue
+flags. This gives deterministic input coverage before introducing semantic
+intent targets.
+
 **Guided generation** is target-first. It samples an output-side coverage item
 or an input-output interaction, then uses an inverse map to construct input
 aspects likely to trigger it. Targets may be semantic intents, outcomes,
@@ -167,8 +174,8 @@ Both modes fit the same feedback loop:
 5. Use gaps to adjust models, intents, materializers, or sampled targets.
 
 The new evolution campaign is intended to make this ladder explicit. It
-currently starts from scratch with only a handler-touch suite. Future campaign
-phases can add profile partition suites, intent-guided suites,
+currently starts from scratch with a handler-touch suite and then adds a
+profile-partition suite. Future campaign phases can add intent-guided suites,
 interaction-guided suites, mutation suites, and state-corpus reuse suites
 without changing the basic reporting loop.
 

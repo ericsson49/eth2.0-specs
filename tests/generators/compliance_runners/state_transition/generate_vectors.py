@@ -15,6 +15,7 @@ from tests.infra.dumper import Dumper
 from .abstract_cases import (
     enumerate_guided_operation_cases,
     enumerate_materializable_operation_cases,
+    enumerate_profile_partition_cases,
     HANDLER_NAMES,
     select_abstract_cases,
 )
@@ -54,10 +55,18 @@ def main() -> None:
     )
     parser.add_argument(
         "--mode",
-        choices=("simple", "handler_touch", "guided"),
+        choices=("simple", "handler_touch", "profile_partition", "guided"),
         help=(
             "Generation strategy. Defaults to 'guided' when --guided is set, "
             "otherwise 'simple'."
+        ),
+    )
+    parser.add_argument(
+        "--profile-dimension",
+        action="append",
+        help=(
+            "Profile dimension to cover in profile_partition mode. Can be repeated. "
+            "Defaults to the built-in validator state dimensions."
         ),
     )
     parser.add_argument(
@@ -87,6 +96,7 @@ def main() -> None:
         invalid_only=args.invalid_only,
         guided=args.guided,
         mode=args.mode,
+        profile_dimensions=args.profile_dimension,
         keep_existing=args.keep_existing,
     )
 
@@ -126,6 +136,7 @@ def generate_vectors(
     invalid_only: bool,
     guided: bool,
     mode: str | None = None,
+    profile_dimensions: list[str] | None = None,
     keep_existing: bool,
     distribution: dict[str, dict[str, int]] | None = None,
 ) -> None:
@@ -140,6 +151,11 @@ def generate_vectors(
         abstract_cases = enumerate_guided_operation_cases(handlers=handlers)
     elif generation_mode == "handler_touch":
         abstract_cases = enumerate_materializable_operation_cases(handlers=handlers)
+    elif generation_mode == "profile_partition":
+        abstract_cases = enumerate_profile_partition_cases(
+            handlers=handlers,
+            dimensions=profile_dimensions,
+        )
     elif changed_only or invalid_only:
         abstract_cases = enumerate_materializable_operation_cases(handlers=handlers)
     else:
@@ -182,7 +198,7 @@ def generate_vectors(
 
 def normalize_generation_mode(mode: str | None, guided: bool) -> str:
     if mode is not None:
-        if mode not in ("simple", "handler_touch", "guided"):
+        if mode not in ("simple", "handler_touch", "profile_partition", "guided"):
             raise ValueError(f"Unsupported generation mode: {mode}")
         return mode
     if guided:

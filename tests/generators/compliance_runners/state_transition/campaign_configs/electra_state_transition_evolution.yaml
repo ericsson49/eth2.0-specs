@@ -4,6 +4,7 @@ output: state_transition_tests/electra_state_transition_evolution
 
 suites:
   - electra_evolution_handler_touch
+  - electra_evolution_profile_partitions
 
 coverage:
   output: state_transition_coverage_evolution_campaign

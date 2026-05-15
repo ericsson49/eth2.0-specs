@@ -652,9 +652,10 @@ generation:
 
 Suite configs can choose a generation mode. `simple` is the default input-first
 mode, `handler_touch` produces one shallow materialized vector per requested
-handler, and `guided` expands handlers into ontology intent cases. The legacy
-`guided: true` field is still supported and maps to `mode: guided` when `mode`
-is omitted:
+handler, `profile_partition` samples configured values from the MiniZinc
+validator-state profile model for each requested handler, and `guided` expands
+handlers into ontology intent cases. The legacy `guided: true` field is still
+supported and maps to `mode: guided` when `mode` is omitted:
 
 ```yaml
 generation:
@@ -662,6 +663,23 @@ generation:
     - all
   per_handler_limit: 1
   mode: handler_touch
+```
+
+The profile-partition mode accepts an optional `profile_dimensions` list. When
+omitted, it uses the built-in validator lifecycle, balance, credential, and
+pending-queue dimensions:
+
+```yaml
+generation:
+  handlers:
+    - all
+  per_handler_limit: 24
+  mode: profile_partition
+  profile_dimensions:
+    - withdrawal_credential_type
+    - activation_epoch_to_current_epoch
+    - balance_to_effective_balance
+    - has_pending_withdrawal_request
 ```
 
 Suite configs can optionally add deterministic distribution quotas. The
@@ -718,11 +736,12 @@ coverage:
 ```
 
 The evolution campaign, `electra_state_transition_evolution`, is organized as a
-test-generation maturity ladder. It currently contains only
+test-generation maturity ladder. It currently contains
 `electra_evolution_handler_touch`, which establishes shallow handler coverage
-from scratch. Future phases can add profile-partition, intent-guided,
-interaction-guided, mutation, and state-corpus reuse suites under the same
-campaign shape.
+from scratch, and `electra_evolution_profile_partitions`, which broadens input
+coverage with MiniZinc-backed profile dimensions. Future phases can add
+intent-guided, interaction-guided, mutation, and state-corpus reuse suites under
+the same campaign shape.
 
 The campaign runner generates each suite, validates all generated directories,
 measures coverage in one `coverage.py` session, and prints a combined health
