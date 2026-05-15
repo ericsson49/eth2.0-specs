@@ -1,0 +1,36 @@
+name: electra_evolution_profile_interactions
+description: "Evolution phase 3: sample pairwise validator-state profile interactions per materialized Electra handler."
+
+generation:
+  fork: electra
+  preset: minimal
+  handlers:
+    - all
+  per_handler_limit: 48
+  mode: profile_interaction
+  guided: false
+  profile_interaction_order: 2
+  profile_dimensions:
+    - withdrawal_credential_type
+    - activation_epoch_to_current_epoch
+    - exit_epoch_to_current_epoch
+    - withdrawable_epoch_to_current_epoch
+    - balance_is_zero
+    - balance_to_effective_balance
+    - effective_balance_lte_ejection_balance
+    - effective_balance_to_min_activation_balance
+    - effective_balance_to_max_effective_balance
+    - slashed
+    - exit_epoch_set
+    - has_pending_withdrawal_request
+    - has_pending_consolidation_request
+  changed_only: false
+  unchanged_only: false
+  invalid_only: false
+  keep_existing: false
+
+coverage:
+  ontology: tests/generators/compliance_runners/state_transition/test_ontology.yaml
+  html: true
+  annotate: true
+  json: true

@@ -156,6 +156,14 @@ type, lifecycle relation, balance relation, slashing status, and pending queue
 flags. This gives deterministic input coverage before introducing semantic
 intent targets.
 
+**Profile-interaction generation** keeps the same input-first posture, but
+samples combinations of profile dimensions. The first implemented form is
+pairwise coverage, for example `withdrawal_credential_type x slashed` or
+`exit_epoch_set x has_pending_withdrawal_request`. This is intended primarily
+as an implementation-diversity rung: two states may touch similar spec code
+while still stressing very different client cache keys, indexes, and fast
+paths.
+
 **Guided generation** is target-first. It samples an output-side coverage item
 or an input-output interaction, then uses an inverse map to construct input
 aspects likely to trigger it. Targets may be semantic intents, outcomes,
@@ -175,8 +183,8 @@ Both modes fit the same feedback loop:
 
 The new evolution campaign is intended to make this ladder explicit. It
 currently starts from scratch with a handler-touch suite and then adds a
-profile-partition suite. Future campaign phases can add intent-guided suites,
-interaction-guided suites, mutation suites, and state-corpus reuse suites
+profile-partition suite and a profile-interaction suite. Future campaign phases
+can add intent-guided suites, mutation suites, and state-corpus reuse suites
 without changing the basic reporting loop.
 
 ## Implemented Coverage

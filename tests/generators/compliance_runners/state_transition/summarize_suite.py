@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import re
 from collections import Counter, defaultdict
+from itertools import combinations
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +70,11 @@ def main() -> None:
         profile_dimensions=suite_config.get("generation", {}).get("profile_dimensions")
         if suite_config
         else None,
+        profile_interaction_order=suite_config.get("generation", {}).get(
+            "profile_interaction_order"
+        )
+        if suite_config
+        else None,
     )
     print(summary)
     if args.output is not None:
@@ -83,6 +89,7 @@ def summarize_suite(
     coverage_dir: Path | None = None,
     distribution: dict[str, dict[str, int]] | None = None,
     profile_dimensions: list[str] | None = None,
+    profile_interaction_order: int | None = None,
     title: str = "State Transition Suite Summary",
 ) -> str:
     ontology = load_test_ontology(ontology_path)
@@ -101,6 +108,14 @@ def summarize_suite(
     lines.extend(format_outcome_counts(staged_cases))
     lines.append("")
     lines.extend(format_profile_partitions(staged_cases, profile_dimensions))
+    lines.append("")
+    lines.extend(
+        format_profile_interactions(
+            staged_cases,
+            profile_dimensions,
+            profile_interaction_order,
+        )
+    )
     lines.append("")
     lines.extend(
         format_interaction_summary(
@@ -297,6 +312,64 @@ def format_profile_partitions(
             f"handlers {len(handlers_with_dimension)}/{handler_count}"
         )
     return lines
+
+
+def format_profile_interactions(
+    cases: list[dict[str, Any]],
+    profile_dimensions: list[str] | None,
+    profile_interaction_order: int | None,
+) -> list[str]:
+    lines = ["Profile Interactions", "--------------------"]
+    if not profile_dimensions or profile_interaction_order is None:
+        lines.append("not configured")
+        return lines
+    if not cases:
+        lines.append("No generated cases found.")
+        return lines
+
+    dimension_groups = tuple(combinations(profile_dimensions, profile_interaction_order))
+    if not dimension_groups:
+        lines.append("no dimension groups configured")
+        return lines
+
+    observed_by_group = {
+        dimension_group: observed_profile_interaction_values(cases, dimension_group)
+        for dimension_group in dimension_groups
+    }
+    nonempty_groups = {
+        dimension_group: values
+        for dimension_group, values in observed_by_group.items()
+        if values
+    }
+    lines.append(f"order: {profile_interaction_order}")
+    lines.append(f"dimension groups: {len(nonempty_groups)}/{len(dimension_groups)}")
+    lines.append(
+        "observed combinations: "
+        f"{sum(len(values) for values in nonempty_groups.values())}"
+    )
+
+    top_groups = sorted(
+        nonempty_groups.items(),
+        key=lambda item: (-len(item[1]), item[0]),
+    )[:10]
+    if top_groups:
+        lines.append("top groups:")
+        for dimension_group, values in top_groups:
+            lines.append(f"  {' x '.join(dimension_group)}: {len(values)}")
+    return lines
+
+
+def observed_profile_interaction_values(
+    cases: list[dict[str, Any]],
+    dimension_group: tuple[str, ...],
+) -> set[tuple[str, ...]]:
+    observed = set()
+    for case in cases:
+        profile = case.get("profile", {})
+        if not all(dimension in profile for dimension in dimension_group):
+            continue
+        observed.add(tuple(str(profile[dimension]) for dimension in dimension_group))
+    return observed
 
 
 def format_distribution(

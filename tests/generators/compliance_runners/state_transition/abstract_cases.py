@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from importlib import resources
+from itertools import combinations
 from typing import Any
 
 from tests.generators.compliance_runners.py_to_mzn import Convertor, get_solutions
@@ -197,6 +198,72 @@ def enumerate_profile_partition_cases(
                 )
 
 
+def enumerate_profile_interaction_cases(
+    handlers: Iterable[str],
+    *,
+    dimensions: Iterable[str] | None = None,
+    order: int = 2,
+) -> Iterable[AbstractStateTransitionCase]:
+    requested_handlers = tuple(handlers)
+    unknown_handlers = set(requested_handlers) - set(HANDLER_NAMES)
+    if unknown_handlers:
+        raise ValueError(f"Unknown handlers: {sorted(unknown_handlers)}")
+    if order < 2:
+        raise ValueError(f"Profile interaction order must be at least 2: {order}")
+
+    interaction_dimensions = tuple(dimensions or DEFAULT_PROFILE_PARTITION_DIMENSIONS)
+    dimension_groups = tuple(combinations(interaction_dimensions, order))
+    candidates = {
+        handler_name: {dimension_group: {} for dimension_group in dimension_groups}
+        for handler_name in requested_handlers
+    }
+    for index, profile in enumerate(solve_validator_state_profiles()):
+        validate_profile_dimensions(profile, interaction_dimensions)
+        for handler_name in requested_handlers:
+            if not is_materializable_for_handler(profile, handler_name):
+                continue
+            for dimension_group in dimension_groups:
+                values = tuple(profile[dimension] for dimension in dimension_group)
+                if values in candidates[handler_name][dimension_group]:
+                    continue
+                candidates[handler_name][dimension_group][values] = (index, profile)
+
+    for handler_name in requested_handlers:
+        max_values = max(
+            len(group_candidates)
+            for group_candidates in candidates[handler_name].values()
+        )
+        for value_index in range(max_values):
+            for dimension_group in dimension_groups:
+                ordered_values = sorted(
+                    candidates[handler_name][dimension_group],
+                    key=profile_interaction_value_sort_key,
+                )
+                if value_index >= len(ordered_values):
+                    continue
+                values = ordered_values[value_index]
+                solution_index, profile = candidates[handler_name][dimension_group][values]
+                profile_with_tags = dict(profile)
+                profile_with_tags["profile_interaction"] = {
+                    "dimensions": list(dimension_group),
+                    "values": [str(value) for value in values],
+                }
+                profile_with_tags["coverage_tags"] = [
+                    f"handler:{handler_name}",
+                    profile_interaction_tag(dimension_group, values),
+                ]
+                yield make_abstract_case(
+                    handler_name,
+                    solution_index,
+                    profile_with_tags,
+                    case_name=profile_interaction_case_name(
+                        dimension_group,
+                        values,
+                        solution_index,
+                    ),
+                )
+
+
 def enumerate_guided_operation_cases(
     handlers: Iterable[str],
 ) -> Iterable[AbstractStateTransitionCase]:
@@ -299,6 +366,24 @@ def profile_partition_case_name(dimension: str, value: Any, solution_index: int)
     return f"profile_{dimension}_{safe_case_value(value)}_{solution_index:04d}"
 
 
+def profile_interaction_case_name(
+    dimensions: tuple[str, ...],
+    values: tuple[Any, ...],
+    solution_index: int,
+) -> str:
+    dimension_label = "_x_".join(dimensions)
+    value_label = "_x_".join(safe_case_value(value) for value in values)
+    return f"profile_pair_{dimension_label}_{value_label}_{solution_index:04d}"
+
+
+def profile_interaction_tag(dimensions: tuple[str, ...], values: tuple[Any, ...]) -> str:
+    labels = [
+        f"{dimension}:{value}"
+        for dimension, value in zip(dimensions, values, strict=True)
+    ]
+    return f"profile_interaction:{'|'.join(labels)}"
+
+
 def safe_case_value(value: Any) -> str:
     text = str(value)
     return (
@@ -315,6 +400,10 @@ def profile_partition_value_sort_key(value: Any) -> tuple[int, str]:
     if isinstance(value, bool):
         return (0 if value else 1, str(value))
     return (0, str(value))
+
+
+def profile_interaction_value_sort_key(values: tuple[Any, ...]) -> tuple[tuple[int, str], ...]:
+    return tuple(profile_partition_value_sort_key(value) for value in values)
 
 
 def make_abstract_case(

@@ -93,6 +93,7 @@ def main() -> None:
             ontology_path=Path(ontology_path) if ontology_path else None,
             coverage_dir=coverage_output if args.coverage or coverage_output.exists() else None,
             profile_dimensions=campaign_profile_dimensions(suite_runs),
+            profile_interaction_order=campaign_profile_interaction_order(suite_runs),
             title="State Transition Campaign Summary",
         )
         print(summary)
@@ -143,6 +144,17 @@ def campaign_profile_dimensions(suite_runs: list[CampaignSuiteRun]) -> list[str]
             if dimension not in dimensions:
                 dimensions.append(dimension)
     return dimensions or None
+
+
+def campaign_profile_interaction_order(suite_runs: list[CampaignSuiteRun]) -> int | None:
+    orders = [
+        suite_run.generation_config.get("profile_interaction_order")
+        for suite_run in suite_runs
+        if suite_run.generation_config.get("mode") == "profile_interaction"
+    ]
+    if not orders:
+        return None
+    return max(int(order or 2) for order in orders)
 
 
 if __name__ == "__main__":

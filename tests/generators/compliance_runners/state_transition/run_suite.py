@@ -114,6 +114,7 @@ def main() -> None:
             coverage_dir=coverage_output if args.coverage or coverage_output.exists() else None,
             distribution=generation_config.get("distribution"),
             profile_dimensions=generation_config.get("profile_dimensions"),
+            profile_interaction_order=generation_config.get("profile_interaction_order"),
         )
         print(summary)
         if args.summary_output is not None:
@@ -150,6 +151,7 @@ def generate_from_config(generation_config: dict, output_dir: Path) -> None:
         guided=generation_config.get("guided", False),
         mode=generation_config.get("mode"),
         profile_dimensions=generation_config.get("profile_dimensions"),
+        profile_interaction_order=generation_config.get("profile_interaction_order", 2),
         keep_existing=keep_existing,
         distribution=generation_config.get("distribution"),
     )
