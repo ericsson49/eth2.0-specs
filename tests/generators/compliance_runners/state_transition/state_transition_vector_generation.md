@@ -698,7 +698,14 @@ generation:
 
 The input-profile mode composes small MiniZinc models for operation input
 validity, queue shape, epoch-boundary shape, participation/finality shape, and
-validator-state shape according to each handler's declared input profile set:
+validator-state shape according to each handler's declared input profile set.
+`input_profile_order` controls one-wise or pairwise sampling over the mapped
+input profile dimensions. For `input_profile_order > 1`, combinations are
+filtered against the profile model solutions, so tuples that are impossible
+inside one MiniZinc profile model are not emitted. Cross-profile compatibility
+is still left to handler materialization and future relation models. Generated
+case metadata keeps the sampled tuple in `input_profile_constraints` and stores
+deterministically completed supporting profile rows in `input_profiles`.
 
 ```yaml
 generation:
@@ -706,6 +713,7 @@ generation:
     - all
   per_handler_limit: 48
   mode: input_profile
+  input_profile_order: 1
 ```
 
 Suite configs can optionally add deterministic distribution quotas. The
@@ -767,11 +775,14 @@ test-generation maturity ladder. It currently contains
 from scratch, and `electra_evolution_profile_partitions`, which broadens input
 coverage with MiniZinc-backed profile dimensions, and
 `electra_evolution_input_profiles`, which samples handler-specific input
-profiles learned from guided materializers. The pairwise
-`electra_evolution_profile_interactions` suite remains available for diversity
-experiments, but is not part of the default evolution campaign for now because
-it is heavier. Future phases can add intent-guided, mutation, and state-corpus
-reuse suites under the same campaign shape.
+profiles learned from guided materializers, and
+`electra_evolution_input_profile_interactions`, which samples pairwise
+interactions over those handler-specific input profiles. The older broad
+`electra_evolution_profile_interactions` suite remains available for
+validator-state diversity experiments, but is not part of the default evolution
+campaign for now because it is heavier and less targeted. Future phases can add
+intent-guided, mutation, and state-corpus reuse suites under the same campaign
+shape.
 
 The campaign runner generates each suite, validates all generated directories,
 measures coverage in one `coverage.py` session, and prints a combined health

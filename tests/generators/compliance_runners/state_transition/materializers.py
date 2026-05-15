@@ -823,8 +823,22 @@ def materialize_withdrawal_request(
 ) -> TestCaseResult:
     validator_index = VALIDATOR_INDEX
     prepare_state_for_profile(spec, state, validator_index, profile)
+    if "input_profiles" in profile and not has_input_profile_constraints(profile, "validator_state"):
+        compounding = (
+            input_profile_shape(
+                profile,
+                "withdrawal_request_input",
+                "request_kind",
+            )
+            == "PARTIAL_WITHDRAWAL_REQUEST"
+        )
+        prepare_withdrawal_source(spec, state, validator_index, compounding=compounding)
+    if "input_profiles" in profile:
+        apply_queue_profile_for_validator(spec, state, validator_index, profile)
     withdrawal_request = build_withdrawal_request(spec, state, validator_index, profile)
-    apply_withdrawal_intent(spec, state, validator_index, withdrawal_request, profile)
+    apply_withdrawal_profile(spec, state, validator_index, withdrawal_request, profile)
+    if not profile.get("profile_driven"):
+        apply_withdrawal_intent(spec, state, validator_index, withdrawal_request, profile)
     if invalid_operation:
         withdrawal_request.source_address = invalid_source_address()
 
@@ -864,8 +878,10 @@ def materialize_consolidation_request(
     target_index = TARGET_VALIDATOR_INDEX
     prepare_state_for_profile(spec, state, source_index, profile)
     prepare_target_for_consolidation(spec, state, target_index)
+    if "input_profiles" in profile:
+        apply_queue_profile_for_validator(spec, state, source_index, profile)
     consolidation_request = build_consolidation_request(spec, state, source_index, target_index)
-    apply_consolidation_intent(
+    apply_consolidation_profile(
         spec,
         state,
         source_index,
@@ -873,6 +889,15 @@ def materialize_consolidation_request(
         consolidation_request,
         profile,
     )
+    if not profile.get("profile_driven"):
+        apply_consolidation_intent(
+            spec,
+            state,
+            source_index,
+            target_index,
+            consolidation_request,
+            profile,
+        )
     if invalid_operation:
         consolidation_request.source_address = invalid_source_address()
 
@@ -1012,6 +1037,18 @@ def prepare_state_for_proposer_slashing(spec, state, profile: dict[str, Any]):
         signed_1=True,
         signed_2=True,
     )
+    if "input_profiles" in profile:
+        proposer_profile = profile.get("input_profiles", {}).get("proposer_slashing_input", {})
+        if proposer_profile.get("header_relation") == "SAME_HEADER":
+            proposer_slashing.signed_header_2.message = proposer_slashing.signed_header_1.message.copy()
+        if proposer_profile.get("proposer_relation") == "DIFFERENT_PROPOSER":
+            proposer_slashing.signed_header_2.message.proposer_index = spec.ValidatorIndex(
+                proposer_index + 1
+            )
+        if proposer_profile.get("proposer_status") == "PROPOSER_ALREADY_SLASHED":
+            state.validators[proposer_index].slashed = True
+        apply_operation_signature_profile(spec, profile, proposer_slashing.signed_header_2)
+        return proposer_slashing
 
     intent = profile.get("guide_intent")
     if intent in (None, "success"):
@@ -1038,9 +1075,10 @@ def prepare_state_for_attester_slashing(spec, state, profile: dict[str, Any]):
     prepare_slashable_validator(spec, state, TARGET_VALIDATOR_INDEX)
 
     intent = profile.get("guide_intent")
+    attester_profile = profile.get("input_profiles", {}).get("attester_slashing_input", {})
     indices_1 = [spec.ValidatorIndex(VALIDATOR_INDEX)]
     indices_2 = [spec.ValidatorIndex(VALIDATOR_INDEX)]
-    if intent == "no_overlap":
+    if intent == "no_overlap" or attester_profile.get("attester_overlap") == "DISJOINT":
         indices_2 = [spec.ValidatorIndex(TARGET_VALIDATOR_INDEX)]
 
     attester_slashing = get_valid_attester_slashing_by_indices(
@@ -1052,6 +1090,13 @@ def prepare_state_for_attester_slashing(spec, state, profile: dict[str, Any]):
         signed_1=True,
         signed_2=True,
     )
+    if "input_profiles" in profile:
+        if attester_profile.get("attestation_data_relation") == "ATTESTATION_DATA_SAME":
+            attester_slashing.attestation_2.data = attester_slashing.attestation_1.data.copy()
+        if attester_profile.get("attester_status") == "ATTESTER_ALREADY_SLASHED":
+            state.validators[VALIDATOR_INDEX].slashed = True
+        apply_operation_signature_profile(spec, profile, attester_slashing.attestation_2)
+        return attester_slashing
 
     if intent in (None, "success", "no_overlap"):
         return attester_slashing
@@ -1069,9 +1114,18 @@ def prepare_state_for_attester_slashing(spec, state, profile: dict[str, Any]):
 
 
 def prepare_state_for_attestation(spec, state, profile: dict[str, Any]):
-    transition_to(spec, state, spec.compute_start_slot_at_epoch(spec.Epoch(2)) + 1)
+    if "input_profiles" in profile:
+        apply_epoch_boundary_profile(spec, state, profile)
+        if spec.get_current_epoch(state) <= spec.GENESIS_EPOCH:
+            transition_to(spec, state, spec.compute_start_slot_at_epoch(spec.Epoch(2)) + 1)
+    else:
+        transition_to(spec, state, spec.compute_start_slot_at_epoch(spec.Epoch(2)) + 1)
     slot = spec.Slot(state.slot - 1)
-    if profile.get("guide_intent") == "previous_epoch_success":
+    attestation_profile = profile.get("input_profiles", {}).get("attestation_input", {})
+    if (
+        profile.get("guide_intent") == "previous_epoch_success"
+        or attestation_profile.get("slot_relation") == "PREVIOUS_EPOCH"
+    ):
         slot = spec.Slot(spec.compute_start_slot_at_epoch(spec.Epoch(2)) - 1)
     attestation = get_valid_attestation(
         spec,
@@ -1079,6 +1133,21 @@ def prepare_state_for_attestation(spec, state, profile: dict[str, Any]):
         slot=slot,
         signed=True,
     )
+    if "input_profiles" in profile:
+        if attestation_profile.get("slot_relation") == "FUTURE_SLOT":
+            attestation.data.slot = state.slot
+        if attestation_profile.get("target_epoch_relation") == "WRONG_TARGET_EPOCH":
+            attestation.data.target.epoch = spec.Epoch(attestation.data.target.epoch + 1)
+        if attestation_profile.get("committee_index_shape") == "COMMITTEE_BAD_INDEX":
+            attestation.committee_bits = spec.Bitvector[spec.MAX_COMMITTEES_PER_SLOT](
+                [False] * spec.MAX_COMMITTEES_PER_SLOT
+            )
+            attestation.committee_bits[spec.MAX_COMMITTEES_PER_SLOT - 1] = True
+        if attestation_profile.get("aggregation_shape") == "AGGREGATION_EMPTY":
+            for index in range(len(attestation.aggregation_bits)):
+                attestation.aggregation_bits[index] = False
+        apply_operation_signature_profile(spec, profile, attestation)
+        return attestation
 
     intent = profile.get("guide_intent")
     if intent in (None, "success", "previous_epoch_success"):
@@ -1116,6 +1185,28 @@ def prepare_slashable_validator(spec, state, validator_index: int) -> None:
 
 def prepare_state_for_deposit(spec, state, profile: dict[str, Any]):
     state.pending_deposits = spec.List[spec.PendingDeposit, spec.PENDING_DEPOSITS_LIMIT]()
+    if "input_profiles" in profile:
+        validator_index = len(state.validators)
+        if input_profile_shape(
+            profile,
+            "deposit_input",
+            "recipient_shape",
+        ) == "TOP_UP_EXISTING_VALIDATOR":
+            validator_index = VALIDATOR_INDEX
+        deposit = prepare_state_and_deposit(
+            spec,
+            state,
+            validator_index=validator_index,
+            amount=spec.MIN_ACTIVATION_BALANCE,
+            withdrawal_credentials=DEPOSIT_WITHDRAWAL_CREDENTIALS,
+            signed=operation_input_shape(profile, "signature_shape") != "SIGNATURE_INVALID",
+        )
+        if operation_input_shape(profile, "proof_shape") == "PROOF_INVALID":
+            state.eth1_data.deposit_root = b"\xff" * 32
+        if operation_input_shape(profile, "signature_shape") == "SIGNATURE_INVALID":
+            profile["bls_setting"] = 1
+        return deposit
+
     intent = profile.get("guide_intent")
     if intent in (None, "new_validator"):
         return prepare_state_and_deposit(
@@ -1164,6 +1255,34 @@ def prepare_state_for_bls_to_execution_change(spec, state, profile: dict[str, An
     withdrawal_pubkey = pubkeys[-1 - validator_index]
     validator = state.validators[validator_index]
     validator.withdrawal_credentials = spec.BLS_WITHDRAWAL_PREFIX + spec.hash(withdrawal_pubkey)[1:]
+    if "input_profiles" in profile:
+        if input_profile_shape(
+            profile,
+            "bls_to_execution_change_input",
+            "credential_shape",
+        ) == "EXECUTION_CREDENTIALS":
+            validator.withdrawal_credentials = (
+                spec.ETH1_ADDRESS_WITHDRAWAL_PREFIX + b"\x00" * 11 + SOURCE_ADDRESS
+            )
+        if input_profile_shape(
+            profile,
+            "bls_to_execution_change_input",
+            "withdrawal_pubkey_relation",
+        ) == "PUBKEY_MISMATCH":
+            withdrawal_pubkey = pubkeys[-2 - validator_index]
+        signed_address_change = get_signed_address_change(
+            spec,
+            state,
+            validator_index=validator_index,
+            withdrawal_pubkey=withdrawal_pubkey,
+            to_execution_address=SOURCE_ADDRESS,
+        )
+        if operation_input_shape(profile, "lookup_shape") == "LOOKUP_MISSING":
+            signed_address_change.message.validator_index = spec.ValidatorIndex(len(state.validators))
+        if operation_input_shape(profile, "signature_shape") == "SIGNATURE_INVALID":
+            profile["bls_setting"] = 1
+            signed_address_change.signature = spec.BLSSignature(b"\x42" * 96)
+        return signed_address_change
 
     intent = profile.get("guide_intent")
     if intent in (None, "success"):
@@ -1217,6 +1336,33 @@ def invalid_source_address() -> bytes:
     return b"\xff" * 20
 
 
+def operation_input_shape(
+    profile: dict[str, Any],
+    dimension: str,
+    default: str | None = None,
+) -> str | None:
+    return input_profile_shape(profile, "operation_input", dimension, default)
+
+
+def input_profile_shape(
+    profile: dict[str, Any],
+    profile_model: str,
+    dimension: str,
+    default: str | None = None,
+) -> str | None:
+    return profile.get("input_profiles", {}).get(profile_model, {}).get(dimension, default)
+
+
+def has_input_profile_constraints(profile: dict[str, Any], profile_model: str) -> bool:
+    return profile_model in profile.get("input_profile_constraints", {})
+
+
+def apply_operation_signature_profile(spec, profile: dict[str, Any], signed_message) -> None:
+    if operation_input_shape(profile, "signature_shape") == "SIGNATURE_INVALID":
+        profile["bls_setting"] = 1
+        signed_message.signature = spec.BLSSignature(b"\x42" * 96)
+
+
 def prepare_state_for_deposit_request(spec, state, profile: dict[str, Any]) -> None:
     state.pending_deposits = spec.List[spec.PendingDeposit, spec.PENDING_DEPOSITS_LIMIT]()
     intent = profile.get("guide_intent")
@@ -1254,6 +1400,13 @@ def prepare_state_for_voluntary_exit(
     validator_index: int,
     profile: dict[str, Any],
 ) -> None:
+    if "input_profiles" in profile:
+        prepare_state_for_profile(spec, state, validator_index, profile)
+        if not has_input_profile_constraints(profile, "validator_state"):
+            prepare_withdrawal_source(spec, state, validator_index, compounding=False)
+        apply_queue_profile_for_validator(spec, state, validator_index, profile)
+        return
+
     current_epoch = spec.Epoch(max(2, spec.config.SHARD_COMMITTEE_PERIOD + 1))
     state.slot = spec.compute_start_slot_at_epoch(current_epoch)
     state.pending_partial_withdrawals = spec.List[
@@ -1299,7 +1452,14 @@ def prepare_state_for_voluntary_exit(
 def build_signed_voluntary_exit(spec, state, validator_index: int, profile: dict[str, Any]):
     current_epoch = spec.get_current_epoch(state)
     voluntary_exit_epoch = current_epoch
-    if profile.get("guide_intent") == "future_epoch":
+    if (
+        profile.get("guide_intent") == "future_epoch"
+        or input_profile_shape(
+            profile,
+            "voluntary_exit_input",
+            "exit_epoch_relation",
+        ) == "EXIT_EPOCH_FUTURE"
+    ):
         voluntary_exit_epoch = spec.Epoch(current_epoch + 1)
 
     voluntary_exit = spec.VoluntaryExit(
@@ -1390,13 +1550,46 @@ def prepare_state_for_profile(spec, state, validator_index: int, profile: dict[s
 
 def build_withdrawal_request(spec, state, validator_index: int, profile: dict[str, Any]):
     amount = spec.FULL_EXIT_REQUEST_AMOUNT
-    if profile["withdrawal_credential_type"] == "COMP" and not profile["exit_epoch_set"]:
+    if input_profile_shape(
+        profile,
+        "withdrawal_request_input",
+        "request_kind",
+    ) == "PARTIAL_WITHDRAWAL_REQUEST":
+        amount = spec.Gwei(1)
+    elif profile["withdrawal_credential_type"] == "COMP" and not profile["exit_epoch_set"]:
         amount = spec.Gwei(1)
     return spec.WithdrawalRequest(
         source_address=SOURCE_ADDRESS,
         validator_pubkey=state.validators[validator_index].pubkey,
         amount=amount,
     )
+
+
+def apply_withdrawal_profile(spec, state, validator_index: int, withdrawal_request, profile) -> None:
+    if "input_profiles" not in profile:
+        return
+    if input_profile_shape(
+        profile,
+        "withdrawal_request_input",
+        "request_kind",
+    ) == "PARTIAL_WITHDRAWAL_REQUEST":
+        prepare_withdrawal_source(spec, state, validator_index, compounding=True)
+        withdrawal_request.source_address = SOURCE_ADDRESS
+        withdrawal_request.validator_pubkey = state.validators[validator_index].pubkey
+        withdrawal_request.amount = spec.Gwei(1)
+    if operation_input_shape(profile, "lookup_shape") == "LOOKUP_MISSING":
+        withdrawal_request.validator_pubkey = b"\xff" * 48
+    if operation_input_shape(profile, "source_address_shape") == "SOURCE_ADDRESS_INVALID":
+        withdrawal_request.source_address = invalid_source_address()
+    queue_profile = profile.get("input_profiles", {}).get("queue", {})
+    if queue_profile.get("pending_request") == "REQUEST_WITHDRAWAL":
+        state.pending_partial_withdrawals.append(
+            spec.PendingPartialWithdrawal(
+                validator_index=spec.ValidatorIndex(validator_index),
+                amount=spec.Gwei(1),
+                withdrawable_epoch=spec.Epoch(spec.get_current_epoch(state) + 1),
+            )
+        )
 
 
 def apply_withdrawal_intent(spec, state, validator_index: int, withdrawal_request, profile) -> None:
@@ -1495,6 +1688,53 @@ def fill_pending_partial_withdrawals(spec, state, validator_index: int) -> None:
         )
 
 
+def apply_queue_profile_for_validator(
+    spec,
+    state,
+    validator_index: int,
+    profile: dict[str, Any],
+) -> None:
+    queue_profile = profile.get("input_profiles", {}).get("queue", {})
+    current_epoch = spec.get_current_epoch(state)
+    partial_withdrawals_shape = queue_profile.get("pending_partial_withdrawals")
+    if partial_withdrawals_shape == "EMPTY":
+        state.pending_partial_withdrawals = spec.List[
+            spec.PendingPartialWithdrawal, spec.PENDING_PARTIAL_WITHDRAWALS_LIMIT
+        ]()
+    elif partial_withdrawals_shape == "NONEMPTY":
+        state.pending_partial_withdrawals = spec.List[
+            spec.PendingPartialWithdrawal, spec.PENDING_PARTIAL_WITHDRAWALS_LIMIT
+        ]()
+        state.pending_partial_withdrawals.append(
+            spec.PendingPartialWithdrawal(
+                validator_index=spec.ValidatorIndex(validator_index),
+                amount=spec.Gwei(1),
+                withdrawable_epoch=spec.Epoch(current_epoch + 1),
+            )
+        )
+    elif partial_withdrawals_shape == "FULL":
+        fill_pending_partial_withdrawals(spec, state, validator_index)
+    elif partial_withdrawals_shape is not None:
+        raise ValueError(
+            f"Unsupported pending partial withdrawals profile shape: {partial_withdrawals_shape}"
+        )
+
+    consolidations_shape = queue_profile.get("pending_consolidations")
+    if consolidations_shape == "EMPTY":
+        state.pending_consolidations = spec.List[
+            spec.PendingConsolidation, spec.PENDING_CONSOLIDATIONS_LIMIT
+        ]()
+    elif consolidations_shape == "NONEMPTY":
+        state.pending_consolidations = spec.List[
+            spec.PendingConsolidation, spec.PENDING_CONSOLIDATIONS_LIMIT
+        ]()
+        add_pending_consolidation(spec, state, validator_index, TARGET_VALIDATOR_INDEX)
+    elif consolidations_shape == "FULL":
+        fill_pending_consolidations(spec, state, validator_index, TARGET_VALIDATOR_INDEX)
+    elif consolidations_shape is not None:
+        raise ValueError(f"Unsupported pending consolidations profile shape: {consolidations_shape}")
+
+
 def prepare_target_for_consolidation(spec, state, target_index: int) -> None:
     current_epoch = spec.get_current_epoch(state)
     target = state.validators[target_index]
@@ -1520,6 +1760,98 @@ def build_consolidation_request(spec, state, source_index: int, target_index: in
         source_pubkey=state.validators[source_index].pubkey,
         target_pubkey=state.validators[target_index].pubkey,
     )
+
+
+def apply_consolidation_profile(
+    spec,
+    state,
+    source_index: int,
+    target_index: int,
+    consolidation_request,
+    profile,
+) -> None:
+    if "input_profiles" not in profile:
+        return
+    request_profile = profile.get("input_profiles", {}).get("consolidation_request_input", {})
+    if request_profile.get("request_kind") == "SWITCH_TO_COMPOUNDING_REQUEST":
+        prepare_switch_to_compounding_source(spec, state, source_index)
+        consolidation_request.source_pubkey = state.validators[source_index].pubkey
+        consolidation_request.target_pubkey = state.validators[source_index].pubkey
+        consolidation_request.source_address = SOURCE_ADDRESS
+    elif request_profile.get("request_kind") == "CONSOLIDATION_REQUEST":
+        prepare_consolidation_source(spec, state, source_index)
+        prepare_target_for_consolidation(spec, state, target_index)
+        consolidation_request.source_pubkey = state.validators[source_index].pubkey
+        consolidation_request.target_pubkey = state.validators[target_index].pubkey
+        consolidation_request.source_address = SOURCE_ADDRESS
+
+    if operation_input_shape(profile, "lookup_shape") == "LOOKUP_MISSING":
+        consolidation_request.source_pubkey = b"\xff" * 48
+    if operation_input_shape(profile, "source_address_shape") == "SOURCE_ADDRESS_INVALID":
+        consolidation_request.source_address = invalid_source_address()
+    if operation_input_shape(profile, "source_target_relation") == "SOURCE_TARGET_SAME":
+        consolidation_request.target_pubkey = state.validators[source_index].pubkey
+    if request_profile.get("target_lookup_shape") == "TARGET_MISSING":
+        consolidation_request.target_pubkey = b"\xff" * 48
+
+    source_activity_shape = request_profile.get("source_activity_shape")
+    if source_activity_shape == "SOURCE_INACTIVE":
+        state.validators[source_index].activation_epoch = spec.FAR_FUTURE_EPOCH
+    elif source_activity_shape == "SOURCE_EXITING":
+        state.validators[source_index].exit_epoch = spec.Epoch(spec.get_current_epoch(state) + 1)
+    elif source_activity_shape == "SOURCE_NOT_ACTIVE_LONG_ENOUGH":
+        state.validators[source_index].activation_epoch = spec.get_current_epoch(state)
+
+    target_activity_shape = request_profile.get("target_activity_shape")
+    if target_activity_shape == "TARGET_INACTIVE":
+        state.validators[target_index].activation_epoch = spec.FAR_FUTURE_EPOCH
+    elif target_activity_shape == "TARGET_EXITING":
+        state.validators[target_index].exit_epoch = spec.Epoch(spec.get_current_epoch(state) + 1)
+
+    if request_profile.get("target_credential_shape") == "TARGET_ETH1":
+        set_eth1_withdrawal_credential_with_balance(
+            spec,
+            state,
+            target_index,
+            effective_balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+            balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+            address=TARGET_ADDRESS,
+        )
+
+    if request_profile.get("churn_shape") == "CHURN_TOO_LOW":
+        set_compounding_withdrawal_credential_with_balance(
+            spec,
+            state,
+            source_index,
+            effective_balance=spec.MIN_ACTIVATION_BALANCE,
+            balance=spec.MIN_ACTIVATION_BALANCE,
+            address=SOURCE_ADDRESS,
+        )
+        set_compounding_withdrawal_credential_with_balance(
+            spec,
+            state,
+            target_index,
+            effective_balance=spec.MIN_ACTIVATION_BALANCE,
+            balance=spec.MIN_ACTIVATION_BALANCE,
+            address=TARGET_ADDRESS,
+        )
+
+    queue_profile = profile.get("input_profiles", {}).get("queue", {})
+    if queue_profile.get("pending_request") == "REQUEST_CONSOLIDATION":
+        state.pending_consolidations.append(
+            spec.PendingConsolidation(
+                source_index=spec.ValidatorIndex(source_index),
+                target_index=spec.ValidatorIndex(target_index),
+            )
+        )
+    elif queue_profile.get("pending_request") == "REQUEST_WITHDRAWAL":
+        state.pending_partial_withdrawals.append(
+            spec.PendingPartialWithdrawal(
+                validator_index=spec.ValidatorIndex(source_index),
+                amount=spec.Gwei(1),
+                withdrawable_epoch=spec.Epoch(spec.get_current_epoch(state) + 1),
+            )
+        )
 
 
 def apply_consolidation_intent(
@@ -1698,6 +2030,10 @@ def fill_pending_consolidations(spec, state, source_index: int, target_index: in
 
 
 def prepare_state_for_pending_deposits(spec, state, profile: dict[str, Any]) -> None:
+    if profile.get("profile_driven"):
+        prepare_state_for_pending_deposits_profiles(spec, state, profile)
+        return
+
     state.deposit_requests_start_index = state.eth1_deposit_index
     state.deposit_balance_to_consume = spec.Gwei(0)
     state.pending_deposits = spec.List[spec.PendingDeposit, spec.PENDING_DEPOSITS_LIMIT]()
@@ -1764,6 +2100,105 @@ def prepare_state_for_pending_deposits(spec, state, profile: dict[str, Any]) -> 
         raise ValueError(f"Unsupported pending deposits guide intent: {intent}")
 
 
+def prepare_state_for_pending_deposits_profiles(
+    spec,
+    state,
+    profile: dict[str, Any],
+) -> None:
+    apply_epoch_boundary_profile(spec, state, profile)
+    state.deposit_requests_start_index = state.eth1_deposit_index
+    state.deposit_balance_to_consume = spec.Gwei(0)
+    state.pending_deposits = spec.List[spec.PendingDeposit, spec.PENDING_DEPOSITS_LIMIT]()
+    pending_deposits_profile = profile.get("input_profiles", {}).get("pending_deposits_input", {})
+
+    queue_profile = profile.get("input_profiles", {}).get("queue", {})
+    pending_deposits_shape = queue_profile.get("pending_deposits", "EMPTY")
+    if pending_deposits_shape == "EMPTY":
+        pass
+    elif pending_deposits_shape == "NONEMPTY":
+        add_pending_deposit(spec, state, VALIDATOR_INDEX, spec.EFFECTIVE_BALANCE_INCREMENT)
+    elif pending_deposits_shape == "FULL":
+        for validator_index in range(spec.MAX_PENDING_DEPOSITS_PER_EPOCH + 1):
+            add_pending_deposit(spec, state, validator_index, spec.EFFECTIVE_BALANCE_INCREMENT)
+    else:
+        raise ValueError(f"Unsupported pending deposits profile shape: {pending_deposits_shape}")
+
+    if pending_deposits_profile:
+        state.pending_deposits = spec.List[spec.PendingDeposit, spec.PENDING_DEPOSITS_LIMIT]()
+        validator_index = VALIDATOR_INDEX
+        withdrawal_credentials = None
+        deposit_kind = pending_deposits_profile.get("deposit_kind")
+        if deposit_kind == "NEW_VALIDATOR":
+            validator_index = len(state.validators)
+            withdrawal_credentials = DEPOSIT_WITHDRAWAL_CREDENTIALS
+        elif deposit_kind == "EXITING_VALIDATOR":
+            spec.initiate_validator_exit(state, spec.ValidatorIndex(VALIDATOR_INDEX))
+        elif deposit_kind == "WITHDRAWABLE_VALIDATOR":
+            spec.initiate_validator_exit(state, spec.ValidatorIndex(VALIDATOR_INDEX))
+            state.slot = spec.compute_start_slot_at_epoch(
+                spec.Epoch(state.validators[VALIDATOR_INDEX].withdrawable_epoch + 1)
+            )
+
+        amount = spec.EFFECTIVE_BALANCE_INCREMENT
+        if pending_deposits_profile.get("churn_shape") == "CHURN_LIMIT_REACHED":
+            amount = spec.Gwei(spec.get_activation_exit_churn_limit(state) + 1)
+
+        slot = None
+        if pending_deposits_profile.get("finality_shape") == "NOT_FINALIZED":
+            slot = spec.Slot(state.slot + 1)
+        add_pending_deposit(
+            spec,
+            state,
+            validator_index,
+            amount,
+            slot=slot,
+            withdrawal_credentials=withdrawal_credentials,
+        )
+
+        if pending_deposits_profile.get("bridge_state") == "ETH1_BRIDGE_PENDING":
+            state.deposit_requests_start_index = spec.uint64(state.eth1_deposit_index + 1)
+            state.finalized_checkpoint.epoch = spec.Epoch(max(1, int(state.finalized_checkpoint.epoch)))
+
+    pending_request_shape = queue_profile.get("pending_request", "REQUEST_NONE")
+    if pending_request_shape == "REQUEST_WITHDRAWAL":
+        state.pending_partial_withdrawals = spec.List[
+            spec.PendingPartialWithdrawal, spec.PENDING_PARTIAL_WITHDRAWALS_LIMIT
+        ]()
+        state.pending_partial_withdrawals.append(
+            spec.PendingPartialWithdrawal(
+                validator_index=spec.ValidatorIndex(VALIDATOR_INDEX),
+                amount=spec.EFFECTIVE_BALANCE_INCREMENT,
+                withdrawable_epoch=spec.Epoch(spec.get_current_epoch(state) + 1),
+            )
+        )
+    elif pending_request_shape == "REQUEST_CONSOLIDATION":
+        prepare_pending_consolidation_pair(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+        state.pending_consolidations = spec.List[
+            spec.PendingConsolidation, spec.PENDING_CONSOLIDATIONS_LIMIT
+        ]()
+        add_pending_consolidation(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+    elif pending_request_shape != "REQUEST_NONE":
+        raise ValueError(f"Unsupported pending request profile shape: {pending_request_shape}")
+
+
+def apply_epoch_boundary_profile(spec, state, profile: dict[str, Any]) -> None:
+    epoch_boundary_shape = (
+        profile.get("input_profiles", {})
+        .get("epoch_boundary", {})
+        .get("epoch_boundary_shape", "NORMAL")
+    )
+    if epoch_boundary_shape == "GENESIS":
+        state.slot = spec.compute_start_slot_at_epoch(spec.GENESIS_EPOCH)
+    elif epoch_boundary_shape == "NORMAL":
+        state.slot = spec.compute_start_slot_at_epoch(spec.Epoch(2))
+    elif epoch_boundary_shape == "PERIOD_BOUNDARY":
+        state.slot = spec.compute_start_slot_at_epoch(spec.Epoch(spec.EPOCHS_PER_SYNC_COMMITTEE_PERIOD))
+    elif epoch_boundary_shape == "NON_BOUNDARY":
+        state.slot = spec.compute_start_slot_at_epoch(spec.Epoch(2)) + 1
+    else:
+        raise ValueError(f"Unsupported epoch boundary profile shape: {epoch_boundary_shape}")
+
+
 def add_pending_deposit(
     spec,
     state,
@@ -1788,6 +2223,10 @@ def add_pending_deposit(
 
 
 def prepare_state_for_pending_consolidations(spec, state, profile: dict[str, Any]) -> None:
+    if profile.get("profile_driven"):
+        prepare_state_for_pending_consolidations_profiles(spec, state, profile)
+        return
+
     state.pending_consolidations = spec.List[
         spec.PendingConsolidation, spec.PENDING_CONSOLIDATIONS_LIMIT
     ]()
@@ -1830,6 +2269,85 @@ def prepare_state_for_pending_consolidations(spec, state, profile: dict[str, Any
         )
     else:
         raise ValueError(f"Unsupported pending consolidations guide intent: {intent}")
+
+
+def prepare_state_for_pending_consolidations_profiles(
+    spec,
+    state,
+    profile: dict[str, Any],
+) -> None:
+    state.pending_consolidations = spec.List[
+        spec.PendingConsolidation, spec.PENDING_CONSOLIDATIONS_LIMIT
+    ]()
+    state.pending_deposits = spec.List[spec.PendingDeposit, spec.PENDING_DEPOSITS_LIMIT]()
+    prepare_pending_consolidation_pair(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+    pending_consolidations_profile = (
+        profile.get("input_profiles", {}).get("pending_consolidations_input", {})
+    )
+
+    queue_profile = profile.get("input_profiles", {}).get("queue", {})
+    pending_consolidations_shape = queue_profile.get("pending_consolidations", "EMPTY")
+    if pending_consolidations_shape == "EMPTY":
+        pass
+    elif pending_consolidations_shape == "NONEMPTY":
+        add_pending_consolidation(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+    elif pending_consolidations_shape == "FULL":
+        for _ in range(spec.PENDING_CONSOLIDATIONS_LIMIT):
+            add_pending_consolidation(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+    else:
+        raise ValueError(
+            f"Unsupported pending consolidations profile shape: {pending_consolidations_shape}"
+        )
+
+    pending_request_shape = queue_profile.get("pending_request", "REQUEST_NONE")
+    if pending_request_shape == "REQUEST_CONSOLIDATION" and len(state.pending_consolidations) == 0:
+        add_pending_consolidation(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+    elif pending_request_shape == "REQUEST_WITHDRAWAL":
+        state.pending_partial_withdrawals = spec.List[
+            spec.PendingPartialWithdrawal, spec.PENDING_PARTIAL_WITHDRAWALS_LIMIT
+        ]()
+        state.pending_partial_withdrawals.append(
+            spec.PendingPartialWithdrawal(
+                validator_index=spec.ValidatorIndex(VALIDATOR_INDEX),
+                amount=spec.EFFECTIVE_BALANCE_INCREMENT,
+                withdrawable_epoch=spec.Epoch(spec.get_current_epoch(state) + 1),
+            )
+        )
+    elif pending_request_shape not in ("REQUEST_NONE", "REQUEST_CONSOLIDATION"):
+        raise ValueError(f"Unsupported pending request profile shape: {pending_request_shape}")
+
+    if pending_consolidations_profile:
+        state.pending_consolidations = spec.List[
+            spec.PendingConsolidation, spec.PENDING_CONSOLIDATIONS_LIMIT
+        ]()
+        add_pending_consolidation(spec, state, VALIDATOR_INDEX, TARGET_VALIDATOR_INDEX)
+
+        source_shape = pending_consolidations_profile.get("source_shape")
+        if source_shape == "SOURCE_NOT_WITHDRAWABLE":
+            state.validators[VALIDATOR_INDEX].withdrawable_epoch = spec.Epoch(
+                spec.get_current_epoch(state) + 2
+            )
+        elif source_shape == "SOURCE_SLASHED":
+            state.validators[VALIDATOR_INDEX].slashed = True
+
+        balance_shape = pending_consolidations_profile.get("balance_shape")
+        if balance_shape == "BALANCE_LESS_THAN_EFFECTIVE_BALANCE":
+            state.balances[VALIDATOR_INDEX] = spec.Gwei(
+                state.validators[VALIDATOR_INDEX].effective_balance
+                - spec.EFFECTIVE_BALANCE_INCREMENT // 8
+            )
+        elif balance_shape == "BALANCE_GREATER_THAN_EFFECTIVE_BALANCE":
+            state.balances[VALIDATOR_INDEX] = spec.Gwei(
+                state.validators[VALIDATOR_INDEX].effective_balance
+                + spec.EFFECTIVE_BALANCE_INCREMENT // 8
+            )
+
+        if pending_consolidations_profile.get("queue_shape") == "BLOCKED_AFTER_PROCESSED":
+            prepare_pending_consolidation_pair(spec, state, HELPER_VALIDATOR_INDEX, 3)
+            add_pending_consolidation(spec, state, HELPER_VALIDATOR_INDEX, 3)
+            state.validators[HELPER_VALIDATOR_INDEX].withdrawable_epoch = spec.Epoch(
+                spec.get_current_epoch(state) + 2
+            )
 
 
 def prepare_pending_consolidation_pair(spec, state, source_index: int, target_index: int) -> None:
@@ -2000,6 +2518,10 @@ def prepare_state_for_justification_and_finalization(
     state,
     profile: dict[str, Any],
 ) -> None:
+    if profile.get("profile_driven"):
+        prepare_state_for_participation_profiles(spec, state, profile, for_finality=True)
+        return
+
     intent = profile.get("guide_intent")
     if intent == "genesis_skip":
         state.slot = spec.compute_start_slot_at_epoch(spec.Epoch(1))
@@ -2107,6 +2629,11 @@ def prepare_state_for_finalization_pattern(
 
 
 def prepare_state_for_inactivity_updates(spec, state, profile: dict[str, Any]) -> None:
+    if profile.get("profile_driven"):
+        prepare_state_for_participation_profiles(spec, state, profile)
+        state.inactivity_scores[VALIDATOR_INDEX] = spec.uint64(5)
+        return
+
     intent = profile.get("guide_intent")
     if intent == "genesis_skip":
         state.slot = spec.compute_start_slot_at_epoch(spec.GENESIS_EPOCH)
@@ -2125,6 +2652,11 @@ def prepare_state_for_inactivity_updates(spec, state, profile: dict[str, Any]) -
 
 
 def prepare_state_for_rewards_and_penalties(spec, state, profile: dict[str, Any]) -> None:
+    if profile.get("profile_driven"):
+        prepare_state_for_participation_profiles(spec, state, profile)
+        state.inactivity_scores[VALIDATOR_INDEX] = spec.uint64(16)
+        return
+
     intent = profile.get("guide_intent")
     if intent == "genesis_skip":
         state.slot = spec.compute_start_slot_at_epoch(spec.GENESIS_EPOCH)
@@ -2145,6 +2677,10 @@ def prepare_state_for_rewards_and_penalties(spec, state, profile: dict[str, Any]
 
 
 def prepare_state_for_participation_flag_updates(spec, state, profile: dict[str, Any]) -> None:
+    if profile.get("profile_driven"):
+        prepare_state_for_participation_profiles(spec, state, profile)
+        return
+
     transition_to(spec, state, spec.compute_start_slot_at_epoch(spec.Epoch(2)))
     clear_participation(spec, state)
     intent = profile.get("guide_intent")
@@ -2156,6 +2692,86 @@ def prepare_state_for_participation_flag_updates(spec, state, profile: dict[str,
         set_full_participation_flags(spec, state, previous=True, current=False)
     else:
         raise ValueError(f"Unsupported participation flag updates guide intent: {intent}")
+
+
+def prepare_state_for_participation_profiles(
+    spec,
+    state,
+    profile: dict[str, Any],
+    *,
+    for_finality: bool = False,
+) -> None:
+    participation_profile = profile.get("input_profiles", {}).get("participation", {})
+    epoch_profile = profile.get("input_profiles", {}).get("epoch_boundary", {})
+    epoch_boundary_shape = epoch_profile.get("epoch_boundary_shape")
+    if epoch_boundary_shape == "GENESIS":
+        state.slot = spec.compute_start_slot_at_epoch(spec.GENESIS_EPOCH)
+        clear_participation(spec, state)
+        return
+
+    leak = bool(participation_profile.get("inactivity_leak", False))
+    current_epoch = spec.Epoch(spec.MIN_EPOCHS_TO_INACTIVITY_PENALTY + 2 if leak else 3)
+    transition_to(spec, state, spec.compute_start_slot_at_epoch(current_epoch) + 1)
+    finalized_epoch = spec.GENESIS_EPOCH if leak else spec.Epoch(current_epoch - 1)
+    state.finalized_checkpoint = spec.Checkpoint(
+        epoch=finalized_epoch,
+        root=spec.get_block_root(state, finalized_epoch),
+    )
+    state.previous_justified_checkpoint = state.finalized_checkpoint
+    state.current_justified_checkpoint = state.finalized_checkpoint
+    state.justification_bits = spec.Bitvector[spec.JUSTIFICATION_BITS_LENGTH]()
+    clear_participation(spec, state)
+
+    apply_participation_shape(spec, state, participation_profile)
+    if for_finality:
+        apply_finality_shape(spec, state, participation_profile)
+
+
+def apply_participation_shape(spec, state, participation_profile: dict[str, Any]) -> None:
+    participation_shape = participation_profile.get("participation_shape", "PARTICIPATION_NONE")
+    previous_epoch = spec.get_previous_epoch(state)
+    if participation_shape == "PARTICIPATION_NONE":
+        return
+    if participation_shape == "PARTICIPATION_TARGET_ONLY":
+        set_epoch_target_participation(spec, state, previous_epoch)
+        return
+    if participation_shape == "PARTICIPATION_FULL":
+        set_full_participation_flags(spec, state, previous=True, current=True)
+        return
+    if participation_shape == "PARTICIPATION_POOR_SUPPORT":
+        state.previous_epoch_participation[VALIDATOR_INDEX] = spec.ParticipationFlags(
+            2**spec.TIMELY_TARGET_FLAG_INDEX
+        )
+        return
+    raise ValueError(f"Unsupported participation profile shape: {participation_shape}")
+
+
+def apply_finality_shape(spec, state, participation_profile: dict[str, Any]) -> None:
+    finality_shape = participation_profile.get("finality_shape", "FINALITY_NONE")
+    current_epoch = spec.get_current_epoch(state)
+    previous_epoch = spec.get_previous_epoch(state)
+    if finality_shape == "FINALITY_NONE":
+        return
+    if finality_shape == "FINALITY_PREVIOUS_JUSTIFIED":
+        state.current_justified_checkpoint = spec.Checkpoint(
+            epoch=spec.Epoch(previous_epoch - 1),
+            root=spec.get_block_root(state, spec.Epoch(previous_epoch - 1)),
+        )
+        state.justification_bits[1] = True
+        set_epoch_target_participation(spec, state, previous_epoch)
+        return
+    if finality_shape == "FINALITY_CURRENT_JUSTIFIED":
+        set_epoch_target_participation(spec, state, current_epoch)
+        return
+    if finality_shape == "FINALITY_FINALIZE_CURRENT":
+        state.current_justified_checkpoint = spec.Checkpoint(
+            epoch=spec.Epoch(current_epoch - 1),
+            root=spec.get_block_root(state, spec.Epoch(current_epoch - 1)),
+        )
+        state.justification_bits[1] = True
+        set_epoch_target_participation(spec, state, current_epoch)
+        return
+    raise ValueError(f"Unsupported finality profile shape: {finality_shape}")
 
 
 def setup_participation_epoch_state(spec, state, *, leak: bool) -> None:
@@ -2284,7 +2900,9 @@ def prepare_state_for_sync_aggregate(spec, state, profile: dict[str, Any]):
     committee_size = len(committee_indices)
     intent = profile.get("guide_intent")
 
-    if intent in (None, "all_participate"):
+    if profile.get("profile_driven"):
+        participant_count = sync_participant_count_from_profile(profile, committee_size)
+    elif intent in (None, "all_participate"):
         participant_count = committee_size
     elif intent == "majority_participate":
         participant_count = committee_size // 2 + 1
@@ -2312,13 +2930,30 @@ def prepare_state_for_sync_aggregate(spec, state, profile: dict[str, Any]):
         )
     finally:
         bls.bls_active = old_bls_active
-    if intent == "bad_signature":
+    if intent == "bad_signature" or operation_input_shape(profile, "signature_shape") == "SIGNATURE_INVALID":
         signature = spec.BLSSignature(b"\x42" * 96)
 
     return spec.SyncAggregate(
         sync_committee_bits=committee_bits,
         sync_committee_signature=signature,
     )
+
+
+def sync_participant_count_from_profile(profile: dict[str, Any], committee_size: int) -> int:
+    participation_shape = (
+        profile.get("input_profiles", {})
+        .get("participation", {})
+        .get("participation_shape", "PARTICIPATION_FULL")
+    )
+    if participation_shape == "PARTICIPATION_NONE":
+        return 0
+    if participation_shape == "PARTICIPATION_TARGET_ONLY":
+        return committee_size // 2 + 1
+    if participation_shape == "PARTICIPATION_POOR_SUPPORT":
+        return max(1, committee_size // 2)
+    if participation_shape == "PARTICIPATION_FULL":
+        return committee_size
+    raise ValueError(f"Unsupported sync participation profile shape: {participation_shape}")
 
 
 def profile_epoch(spec, current_epoch, relation: str):

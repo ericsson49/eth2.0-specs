@@ -78,6 +78,7 @@ def generate_from_config(generation_config: dict, output_dir: Path) -> None:
         mode=generation_config.get("mode"),
         profile_dimensions=generation_config.get("profile_dimensions"),
         profile_interaction_order=generation_config.get("profile_interaction_order", 2),
+        input_profile_order=generation_config.get("input_profile_order", 1),
         keep_existing=False,
         distribution=generation_config.get("distribution"),
     )

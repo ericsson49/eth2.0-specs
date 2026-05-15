@@ -171,6 +171,14 @@ declares the profile models that can affect it, and the sampler covers values
 from those models without running the heavier pairwise interaction suite. This
 is still input-first, but it reaches more protocol behavior because the sampled
 inputs include operation and epoch-processing shapes, not only validator state.
+The same mode can use `input_profile_order: 2` to sample pairwise combinations
+over the handler-specific input profile dimensions. Pairwise and higher-order
+input-profile sampling filters combinations against the solved MiniZinc profile
+models, removing same-model tuples that cannot exist together while keeping
+cross-model compatibility as a separate materialization concern. Case metadata
+separates the sampled constraints from completed supporting profile rows, so
+coverage reports can stay focused on the sampled target while materializers get
+the fuller abstract input shape.
 
 **Guided generation** is target-first. It samples an output-side coverage item
 or an input-output interaction, then uses an inverse map to construct input
@@ -191,9 +199,10 @@ Both modes fit the same feedback loop:
 
 The new evolution campaign is intended to make this ladder explicit. It
 currently starts from scratch with a handler-touch suite and then adds a
-profile-partition suite and an input-profile suite. The profile-interaction
-suite is available as an implementation-diversity experiment, but it is not in
-the default evolution campaign for now because it is heavier. Future campaign
+profile-partition suite, an input-profile suite, and a pairwise input-profile
+interaction suite. The broader validator-state profile-interaction suite is
+available as an implementation-diversity experiment, but it is not in the
+default evolution campaign for now because it is heavier. Future campaign
 phases can add intent-guided suites, mutation suites, and state-corpus reuse
 suites without changing the basic reporting loop.
 

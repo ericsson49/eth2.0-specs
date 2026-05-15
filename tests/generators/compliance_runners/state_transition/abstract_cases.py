@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from functools import lru_cache
 from importlib import resources
-from itertools import combinations
+from itertools import combinations, product
 from typing import Any
 
 from tests.generators.compliance_runners.py_to_mzn import Convertor, get_solutions
@@ -15,6 +16,16 @@ VALIDATOR_STATE_MODEL = "validator_state.py"
 PROFILE_MODELS = {
     "validator_state": "validator_state.py",
     "operation_input": "operation_input.py",
+    "proposer_slashing_input": "proposer_slashing_input.py",
+    "attester_slashing_input": "attester_slashing_input.py",
+    "attestation_input": "attestation_input.py",
+    "deposit_input": "deposit_input.py",
+    "bls_to_execution_change_input": "bls_to_execution_change_input.py",
+    "voluntary_exit_input": "voluntary_exit_input.py",
+    "withdrawal_request_input": "withdrawal_request_input.py",
+    "consolidation_request_input": "consolidation_request_input.py",
+    "pending_deposits_input": "pending_deposits_input.py",
+    "pending_consolidations_input": "pending_consolidations_input.py",
     "queue": "queue.py",
     "epoch_boundary": "epoch_boundary.py",
     "participation": "participation.py",
@@ -81,6 +92,48 @@ INPUT_PROFILE_DIMENSIONS = {
         "source_address_shape",
         "source_target_relation",
     ),
+    "proposer_slashing_input": (
+        "header_relation",
+        "proposer_relation",
+        "proposer_status",
+    ),
+    "attester_slashing_input": (
+        "attester_overlap",
+        "attestation_data_relation",
+        "attester_status",
+    ),
+    "attestation_input": (
+        "slot_relation",
+        "target_epoch_relation",
+        "committee_index_shape",
+        "aggregation_shape",
+    ),
+    "deposit_input": ("recipient_shape",),
+    "bls_to_execution_change_input": (
+        "credential_shape",
+        "withdrawal_pubkey_relation",
+    ),
+    "voluntary_exit_input": ("exit_epoch_relation",),
+    "withdrawal_request_input": ("request_kind",),
+    "consolidation_request_input": (
+        "request_kind",
+        "target_lookup_shape",
+        "source_activity_shape",
+        "target_activity_shape",
+        "target_credential_shape",
+        "churn_shape",
+    ),
+    "pending_deposits_input": (
+        "deposit_kind",
+        "finality_shape",
+        "churn_shape",
+        "bridge_state",
+    ),
+    "pending_consolidations_input": (
+        "source_shape",
+        "balance_shape",
+        "queue_shape",
+    ),
     "queue": (
         "pending_partial_withdrawals",
         "pending_consolidations",
@@ -95,17 +148,22 @@ INPUT_PROFILE_DIMENSIONS = {
     ),
 }
 HANDLER_INPUT_PROFILE_MODELS = {
-    "proposer_slashing": ("operation_input",),
-    "attester_slashing": ("operation_input",),
-    "attestation": ("operation_input", "epoch_boundary"),
-    "deposit": ("operation_input",),
-    "bls_to_execution_change": ("operation_input",),
+    "proposer_slashing": ("proposer_slashing_input", "operation_input"),
+    "attester_slashing": ("attester_slashing_input", "operation_input"),
+    "attestation": ("attestation_input", "operation_input", "epoch_boundary"),
+    "deposit": ("deposit_input", "operation_input"),
+    "bls_to_execution_change": ("bls_to_execution_change_input", "operation_input"),
     "deposit_request": ("validator_state",),
-    "voluntary_exit": ("validator_state", "queue", "epoch_boundary"),
-    "withdrawal_request": ("validator_state", "operation_input", "queue"),
-    "consolidation_request": ("validator_state", "operation_input", "queue"),
-    "pending_deposits": ("queue", "epoch_boundary"),
-    "pending_consolidations": ("queue",),
+    "voluntary_exit": ("voluntary_exit_input", "queue", "epoch_boundary", "validator_state"),
+    "withdrawal_request": ("withdrawal_request_input", "operation_input", "queue", "validator_state"),
+    "consolidation_request": (
+        "consolidation_request_input",
+        "operation_input",
+        "queue",
+        "validator_state",
+    ),
+    "pending_deposits": ("pending_deposits_input", "queue", "epoch_boundary"),
+    "pending_consolidations": ("pending_consolidations_input", "queue"),
     "effective_balance_updates": ("validator_state",),
     "registry_updates": ("validator_state",),
     "slashings": ("validator_state",),
@@ -120,6 +178,27 @@ HANDLER_INPUT_PROFILE_MODELS = {
     "sync_committee_updates": ("epoch_boundary",),
     "sync_aggregate": ("operation_input", "participation"),
 }
+PROFILE_DRIVEN_INPUT_HANDLERS = frozenset({
+    "proposer_slashing",
+    "attester_slashing",
+    "attestation",
+    "deposit",
+    "bls_to_execution_change",
+    "deposit_request",
+    "voluntary_exit",
+    "withdrawal_request",
+    "consolidation_request",
+    "sync_aggregate",
+    "pending_deposits",
+    "pending_consolidations",
+    "effective_balance_updates",
+    "registry_updates",
+    "slashings",
+    "justification_and_finalization",
+    "inactivity_updates",
+    "rewards_and_penalties",
+    "participation_flag_updates",
+})
 
 
 def load_validator_state_model() -> str:
@@ -147,7 +226,62 @@ def solve_validator_state_profiles(limit: int | None = None) -> Iterable[dict[st
 
 
 def solve_profile_model(profile_model: str) -> Iterable[dict[str, Any]]:
-    yield from get_solutions(transpile_profile_model(profile_model))
+    yield from cached_profile_model_solutions(profile_model)
+
+
+@lru_cache
+def cached_profile_model_solutions(profile_model: str) -> tuple[dict[str, Any], ...]:
+    return tuple(get_solutions(transpile_profile_model(profile_model)))
+
+
+@lru_cache
+def cached_validator_state_profiles() -> tuple[dict[str, Any], ...]:
+    return tuple(get_solutions(transpile_validator_state_model()))
+
+
+def profile_constraints_compatible(
+    constraints: Iterable[tuple[str, str, Any]],
+) -> bool:
+    """Return whether every profile-model projection has a matching solution."""
+    grouped_constraints = group_profile_constraints(constraints)
+
+    for profile_model, model_constraints in grouped_constraints.items():
+        if not profile_model_constraints_compatible(profile_model, model_constraints):
+            return False
+    return True
+
+
+def profile_model_constraints_compatible(
+    profile_model: str,
+    constraints: list[tuple[str, Any]],
+) -> bool:
+    return complete_profile_model_constraints(profile_model, constraints) is not None
+
+
+def complete_profile_model_constraints(
+    profile_model: str,
+    constraints: list[tuple[str, Any]],
+) -> dict[str, Any] | None:
+    """Return a deterministic solved profile row matching a partial projection."""
+    for profile in profiles_for_compatibility(profile_model):
+        if all(profile[dimension] == value for dimension, value in constraints):
+            return profile
+    return None
+
+
+def group_profile_constraints(
+    constraints: Iterable[tuple[str, str, Any]],
+) -> dict[str, list[tuple[str, Any]]]:
+    grouped_constraints: dict[str, list[tuple[str, Any]]] = {}
+    for profile_model, dimension, value in constraints:
+        grouped_constraints.setdefault(profile_model, []).append((dimension, value))
+    return grouped_constraints
+
+
+def profiles_for_compatibility(profile_model: str) -> tuple[dict[str, Any], ...]:
+    if profile_model == "validator_state":
+        return cached_validator_state_profiles()
+    return cached_profile_model_solutions(profile_model)
 
 
 def enumerate_abstract_cases(limit: int | None = None) -> Iterable[AbstractStateTransitionCase]:
@@ -332,37 +466,29 @@ def enumerate_profile_interaction_cases(
 
 def enumerate_input_profile_cases(
     handlers: Iterable[str],
+    *,
+    order: int = 1,
 ) -> Iterable[AbstractStateTransitionCase]:
     requested_handlers = tuple(handlers)
     unknown_handlers = set(requested_handlers) - set(HANDLER_NAMES)
     if unknown_handlers:
         raise ValueError(f"Unknown handlers: {sorted(unknown_handlers)}")
+    if order < 1:
+        raise ValueError(f"Input profile order must be at least 1: {order}")
 
     base_profiles = first_materializable_profiles(requested_handlers)
-    model_solutions = {
-        profile_model: tuple(solve_profile_model(profile_model))
-        for profile_model in PROFILE_MODELS
-        if profile_model != "validator_state"
-    }
     for handler_name in requested_handlers:
         if handler_name not in base_profiles:
             continue
         solution_index, base_profile = base_profiles[handler_name]
-        for profile_model in HANDLER_INPUT_PROFILE_MODELS[handler_name]:
-            if profile_model == "validator_state":
-                yield from enumerate_validator_state_input_cases(
-                    handler_name,
-                    solution_index,
-                    base_profile,
-                )
-                continue
-            yield from enumerate_model_input_cases(
-                handler_name,
-                solution_index,
-                base_profile,
-                profile_model,
-                model_solutions[profile_model],
-            )
+        dimensions = input_profile_dimensions_for_handler(handler_name, base_profile)
+        yield from enumerate_input_profile_dimension_groups(
+            handler_name,
+            solution_index,
+            base_profile,
+            dimensions,
+            order=order,
+        )
 
 
 def first_materializable_profiles(
@@ -380,60 +506,241 @@ def first_materializable_profiles(
     return base_profiles
 
 
-def enumerate_validator_state_input_cases(
+def input_profile_dimensions_for_handler(
     handler_name: str,
-    solution_index: int,
     base_profile: dict[str, Any],
-) -> Iterable[AbstractStateTransitionCase]:
-    for dimension in DEFAULT_PROFILE_PARTITION_DIMENSIONS:
-        profile = dict(base_profile)
-        intent = input_intent_for_dimension(handler_name, "validator_state", dimension, profile[dimension])
-        if intent is None:
-            continue
-        profile["guide_intent"] = intent
-        profile["input_profiles"] = {"validator_state": {dimension: profile[dimension]}}
-        profile["coverage_tags"] = [
-            f"handler:{handler_name}",
-            f"input_profile:validator_state.{dimension}:{profile[dimension]}",
-        ]
-        yield make_abstract_case(
+) -> list[dict[str, Any]]:
+    dimensions = []
+    for profile_model in HANDLER_INPUT_PROFILE_MODELS[handler_name]:
+        if profile_model == "validator_state":
+            dimensions.extend(validator_state_input_dimensions(handler_name, base_profile))
+        else:
+            dimensions.extend(
+                model_input_dimensions(
+                    handler_name,
+                    profile_model,
+                    tuple(solve_profile_model(profile_model)),
+                )
+            )
+    return dimensions
+
+
+def validator_state_input_dimensions(
+    handler_name: str,
+    base_profile: dict[str, Any],
+) -> list[dict[str, Any]]:
+    dimensions = []
+    if is_profile_driven_input_handler(handler_name):
+        return model_dimension_values(
             handler_name,
-            solution_index,
-            profile,
-            case_name=f"input_validator_state_{dimension}_{safe_case_value(profile[dimension])}",
+            "validator_state",
+            DEFAULT_PROFILE_PARTITION_DIMENSIONS,
+            tuple(solve_validator_state_profiles()),
         )
 
+    for dimension in DEFAULT_PROFILE_PARTITION_DIMENSIONS:
+        value = base_profile[dimension]
+        intent = input_intent_for_dimension(handler_name, "validator_state", dimension, value)
+        if intent is None and not is_profile_driven_input_handler(handler_name):
+            continue
+        dimensions.append(
+            {
+                "profile_model": "validator_state",
+                "dimension": dimension,
+                "value": value,
+                "intent": intent,
+            }
+        )
+    return dimensions
 
-def enumerate_model_input_cases(
+
+def model_input_dimensions(
     handler_name: str,
-    solution_index: int,
-    base_profile: dict[str, Any],
     profile_model: str,
     model_profiles: tuple[dict[str, Any], ...],
-) -> Iterable[AbstractStateTransitionCase]:
-    seen = {dimension: set() for dimension in INPUT_PROFILE_DIMENSIONS[profile_model]}
+) -> list[dict[str, Any]]:
+    return model_dimension_values(
+        handler_name,
+        profile_model,
+        INPUT_PROFILE_DIMENSIONS[profile_model],
+        model_profiles,
+    )
+
+
+def model_dimension_values(
+    handler_name: str,
+    profile_model: str,
+    dimension_names: tuple[str, ...],
+    model_profiles: tuple[dict[str, Any], ...],
+) -> list[dict[str, Any]]:
+    dimensions = []
+    seen = {dimension: set() for dimension in dimension_names}
     for model_profile in model_profiles:
-        for dimension in INPUT_PROFILE_DIMENSIONS[profile_model]:
+        for dimension in dimension_names:
             value = model_profile[dimension]
             if value in seen[dimension]:
                 continue
             intent = input_intent_for_dimension(handler_name, profile_model, dimension, value)
-            if intent is None:
+            if intent is None and not is_profile_driven_input_handler(handler_name):
                 continue
             seen[dimension].add(value)
-            profile = dict(base_profile)
-            profile["guide_intent"] = intent
-            profile["input_profiles"] = {profile_model: {dimension: value}}
-            profile["coverage_tags"] = [
-                f"handler:{handler_name}",
-                f"input_profile:{profile_model}.{dimension}:{value}",
-            ]
-            yield make_abstract_case(
+            dimensions.append(
+                {
+                    "profile_model": profile_model,
+                    "dimension": dimension,
+                    "value": value,
+                    "intent": intent,
+                }
+            )
+    return dimensions
+
+
+def is_profile_driven_input_handler(handler_name: str) -> bool:
+    return handler_name in PROFILE_DRIVEN_INPUT_HANDLERS
+
+
+def enumerate_input_profile_dimension_groups(
+    handler_name: str,
+    solution_index: int,
+    base_profile: dict[str, Any],
+    dimensions: list[dict[str, Any]],
+    *,
+    order: int,
+) -> Iterable[AbstractStateTransitionCase]:
+    if order == 1:
+        for dimension in dimensions:
+            yield make_input_profile_case(handler_name, solution_index, base_profile, (dimension,))
+        return
+
+    for dimension in dimensions:
+        yield make_input_profile_case(handler_name, solution_index, base_profile, (dimension,))
+
+    for dimension_group in combinations(dimensions, order):
+        profile_model_values = [
+            input_profile_dimension_values(dimension)
+            for dimension in dimension_group
+        ]
+        for value_group in product(*profile_model_values):
+            if complete_input_profiles(handler_name, base_profile, value_group) is None:
+                continue
+            yield make_input_profile_case(
                 handler_name,
                 solution_index,
-                profile,
-                case_name=f"input_{profile_model}_{dimension}_{safe_case_value(value)}",
+                base_profile,
+                value_group,
             )
+
+
+def input_profile_dimension_values(dimension: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    return (dimension,)
+
+
+def complete_input_profiles(
+    handler_name: str,
+    base_profile: dict[str, Any],
+    dimension_group: tuple[dict[str, Any], ...],
+) -> dict[str, dict[str, Any]] | None:
+    constraints = group_profile_constraints(
+        (
+            dimension["profile_model"],
+            dimension["dimension"],
+            dimension["value"],
+        )
+        for dimension in dimension_group
+    )
+    completed_profiles: dict[str, dict[str, Any]] = {}
+
+    for profile_model in profile_models_to_complete(handler_name, constraints):
+        model_constraints = constraints.get(profile_model, [])
+        if profile_model == "validator_state":
+            if is_profile_driven_input_handler(handler_name):
+                completed_profile = complete_profile_model_constraints(
+                    profile_model,
+                    model_constraints,
+                )
+                if completed_profile is None:
+                    return None
+                completed_profiles[profile_model] = dict(completed_profile)
+                continue
+            if not validator_state_constraints_match_base(base_profile, model_constraints):
+                return None
+            completed_profiles[profile_model] = {
+                dimension: base_profile[dimension]
+                for dimension in DEFAULT_PROFILE_PARTITION_DIMENSIONS
+            }
+            continue
+
+        completed_profile = complete_profile_model_constraints(
+            profile_model,
+            model_constraints,
+        )
+        if completed_profile is None:
+            return None
+        completed_profiles[profile_model] = dict(completed_profile)
+
+    return completed_profiles
+
+
+def profile_models_to_complete(
+    handler_name: str,
+    constraints: dict[str, list[tuple[str, Any]]],
+) -> tuple[str, ...]:
+    if handler_name:
+        return HANDLER_INPUT_PROFILE_MODELS[handler_name]
+    return tuple(constraints)
+
+
+def validator_state_constraints_match_base(
+    base_profile: dict[str, Any],
+    constraints: list[tuple[str, Any]],
+) -> bool:
+    return all(base_profile[dimension] == value for dimension, value in constraints)
+
+
+def make_input_profile_case(
+    handler_name: str,
+    solution_index: int,
+    base_profile: dict[str, Any],
+    dimension_group: tuple[dict[str, Any], ...],
+) -> AbstractStateTransitionCase:
+    profile = dict(base_profile)
+    profile["guide_intent"] = input_profile_guide_intent(dimension_group)
+    profile["profile_driven"] = is_profile_driven_input_handler(handler_name)
+    input_profiles = complete_input_profiles(handler_name, base_profile, dimension_group)
+    if input_profiles is None:
+        raise ValueError(f"Cannot complete input profile case: {dimension_group}")
+    if "validator_state" in input_profiles:
+        profile.update(input_profiles["validator_state"])
+    profile["input_profiles"] = input_profiles
+    profile["input_profile_constraints"] = input_profile_constraints(dimension_group)
+    profile["coverage_tags"] = [
+        f"handler:{handler_name}",
+        *[input_profile_tag(dimension) for dimension in dimension_group],
+    ]
+    return make_abstract_case(
+        handler_name,
+        solution_index,
+        profile,
+        case_name=input_profile_case_name(dimension_group),
+    )
+
+
+def input_profile_guide_intent(dimension_group: tuple[dict[str, Any], ...]) -> str | None:
+    for dimension in dimension_group:
+        if dimension["intent"] is not None:
+            return dimension["intent"]
+    return None
+
+
+def input_profile_constraints(
+    dimension_group: tuple[dict[str, Any], ...],
+) -> dict[str, dict[str, Any]]:
+    constraints = {}
+    for dimension in dimension_group:
+        constraints.setdefault(dimension["profile_model"], {})[
+            dimension["dimension"]
+        ] = dimension["value"]
+    return constraints
 
 
 def enumerate_guided_operation_cases(
@@ -534,6 +841,26 @@ def input_intent_for_dimension(
     value = str(value)
     if profile_model == "operation_input":
         return operation_input_intent(handler_name, dimension, value)
+    if profile_model == "proposer_slashing_input":
+        return proposer_slashing_input_intent(dimension, value)
+    if profile_model == "attester_slashing_input":
+        return attester_slashing_input_intent(dimension, value)
+    if profile_model == "attestation_input":
+        return attestation_input_intent(dimension, value)
+    if profile_model == "deposit_input":
+        return deposit_input_intent(value)
+    if profile_model == "bls_to_execution_change_input":
+        return bls_to_execution_change_input_intent(dimension, value)
+    if profile_model == "voluntary_exit_input":
+        return voluntary_exit_input_intent(value)
+    if profile_model == "withdrawal_request_input":
+        return withdrawal_request_input_intent(value)
+    if profile_model == "consolidation_request_input":
+        return consolidation_request_input_intent(dimension, value)
+    if profile_model == "pending_deposits_input":
+        return pending_deposits_input_intent(dimension, value)
+    if profile_model == "pending_consolidations_input":
+        return pending_consolidations_input_intent(dimension, value)
     if profile_model == "queue":
         return queue_input_intent(handler_name, dimension, value)
     if profile_model == "epoch_boundary":
@@ -574,6 +901,141 @@ def operation_input_intent(handler_name: str, dimension: str, value: str) -> str
         and handler_name == "consolidation_request"
     ):
         return "source_equals_target"
+    return None
+
+
+def proposer_slashing_input_intent(dimension: str, value: str) -> str | None:
+    if dimension == "header_relation" and value == "SAME_HEADER":
+        return "same_header"
+    if dimension == "proposer_relation" and value == "DIFFERENT_PROPOSER":
+        return "proposer_mismatch"
+    if dimension == "proposer_status" and value == "PROPOSER_ALREADY_SLASHED":
+        return "already_slashed"
+    if (
+        dimension == "header_relation"
+        and value == "DIFFERENT_HEADERS"
+    ):
+        return "success"
+    return None
+
+
+def attester_slashing_input_intent(dimension: str, value: str) -> str | None:
+    if dimension == "attester_overlap" and value == "DISJOINT":
+        return "no_overlap"
+    if dimension == "attestation_data_relation" and value == "ATTESTATION_DATA_SAME":
+        return "not_slashable_data"
+    if dimension == "attester_status" and value == "ATTESTER_ALREADY_SLASHED":
+        return "already_slashed"
+    if dimension == "attestation_data_relation" and value == "ATTESTATION_DATA_SLASHABLE":
+        return "success"
+    return None
+
+
+def attestation_input_intent(dimension: str, value: str) -> str | None:
+    if dimension == "slot_relation" and value == "PREVIOUS_EPOCH":
+        return "previous_epoch_success"
+    if dimension == "slot_relation" and value == "FUTURE_SLOT":
+        return "future_slot"
+    if dimension == "slot_relation" and value == "CURRENT_EPOCH":
+        return "success"
+    if dimension == "target_epoch_relation" and value == "WRONG_TARGET_EPOCH":
+        return "wrong_target_epoch"
+    if dimension == "committee_index_shape" and value == "COMMITTEE_BAD_INDEX":
+        return "bad_committee_index"
+    if dimension == "aggregation_shape" and value == "AGGREGATION_EMPTY":
+        return "empty_aggregation"
+    return None
+
+
+def deposit_input_intent(value: str) -> str | None:
+    if value == "NEW_VALIDATOR":
+        return "new_validator"
+    if value == "TOP_UP_EXISTING_VALIDATOR":
+        return "top_up_existing_validator"
+    return None
+
+
+def bls_to_execution_change_input_intent(dimension: str, value: str) -> str | None:
+    if dimension == "credential_shape" and value == "EXECUTION_CREDENTIALS":
+        return "not_bls_credentials"
+    if dimension == "withdrawal_pubkey_relation" and value == "PUBKEY_MISMATCH":
+        return "pubkey_mismatch"
+    if dimension == "credential_shape" and value == "BLS_CREDENTIALS":
+        return "success"
+    return None
+
+
+def voluntary_exit_input_intent(value: str) -> str | None:
+    if value == "EXIT_EPOCH_FUTURE":
+        return "future_epoch"
+    if value == "EXIT_EPOCH_CURRENT":
+        return "success"
+    return None
+
+
+def withdrawal_request_input_intent(value: str) -> str | None:
+    if value == "FULL_EXIT_REQUEST":
+        return "success_full_exit"
+    if value == "PARTIAL_WITHDRAWAL_REQUEST":
+        return "success_partial_withdrawal"
+    return None
+
+
+def consolidation_request_input_intent(dimension: str, value: str) -> str | None:
+    if dimension == "request_kind" and value == "SWITCH_TO_COMPOUNDING_REQUEST":
+        return "switch_to_compounding_success"
+    if dimension == "request_kind" and value == "CONSOLIDATION_REQUEST":
+        return "success"
+    if dimension == "target_lookup_shape" and value == "TARGET_MISSING":
+        return "target_missing"
+    if dimension == "source_activity_shape" and value == "SOURCE_INACTIVE":
+        return "source_inactive"
+    if dimension == "source_activity_shape" and value == "SOURCE_EXITING":
+        return "source_exiting"
+    if dimension == "source_activity_shape" and value == "SOURCE_NOT_ACTIVE_LONG_ENOUGH":
+        return "source_not_active_long_enough"
+    if dimension == "target_activity_shape" and value == "TARGET_INACTIVE":
+        return "target_inactive"
+    if dimension == "target_activity_shape" and value == "TARGET_EXITING":
+        return "target_exiting"
+    if dimension == "target_credential_shape" and value == "TARGET_ETH1":
+        return "target_not_compounding"
+    if dimension == "churn_shape" and value == "CHURN_TOO_LOW":
+        return "churn_too_low"
+    return None
+
+
+def pending_deposits_input_intent(dimension: str, value: str) -> str | None:
+    if dimension == "deposit_kind" and value == "EXISTING_ACTIVE_VALIDATOR":
+        return "success_top_up"
+    if dimension == "deposit_kind" and value == "NEW_VALIDATOR":
+        return "new_validator"
+    if dimension == "deposit_kind" and value == "EXITING_VALIDATOR":
+        return "exited_validator_postponed"
+    if dimension == "deposit_kind" and value == "WITHDRAWABLE_VALIDATOR":
+        return "withdrawable_validator"
+    if dimension == "finality_shape" and value == "NOT_FINALIZED":
+        return "not_finalized"
+    if dimension == "churn_shape" and value == "CHURN_LIMIT_REACHED":
+        return "churn_limit_reached"
+    if dimension == "bridge_state" and value == "ETH1_BRIDGE_PENDING":
+        return "eth1_bridge_blocks_request"
+    return None
+
+
+def pending_consolidations_input_intent(dimension: str, value: str) -> str | None:
+    if dimension == "source_shape" and value == "SOURCE_NOT_WITHDRAWABLE":
+        return "not_withdrawable"
+    if dimension == "source_shape" and value == "SOURCE_SLASHED":
+        return "slashed_source_skipped"
+    if dimension == "balance_shape" and value == "BALANCE_LESS_THAN_EFFECTIVE_BALANCE":
+        return "source_balance_less_than_effective_balance"
+    if dimension == "balance_shape" and value == "BALANCE_GREATER_THAN_EFFECTIVE_BALANCE":
+        return "source_balance_greater_than_effective_balance"
+    if dimension == "queue_shape" and value == "BLOCKED_AFTER_PROCESSED":
+        return "blocked_after_processed"
+    if dimension == "source_shape" and value == "SOURCE_WITHDRAWABLE":
+        return "success"
     return None
 
 
@@ -652,7 +1114,10 @@ def participation_input_intent(handler_name: str, dimension: str, value: str) ->
                 "sync_aggregate": "majority_participate",
             }.get(handler_name)
         if value == "PARTICIPATION_POOR_SUPPORT":
-            return {"justification_and_finalization": "poor_support"}.get(handler_name)
+            return {
+                "justification_and_finalization": "poor_support",
+                "sync_aggregate": "minority_participate",
+            }.get(handler_name)
     if dimension == "finality_shape":
         return {
             "FINALITY_CURRENT_JUSTIFIED": "current_justified",
@@ -724,6 +1189,24 @@ def profile_interaction_tag(dimensions: tuple[str, ...], values: tuple[Any, ...]
         for dimension, value in zip(dimensions, values, strict=True)
     ]
     return f"profile_interaction:{'|'.join(labels)}"
+
+
+def input_profile_case_name(dimension_group: tuple[dict[str, Any], ...]) -> str:
+    labels = [
+        (
+            f"{dimension['profile_model']}_{dimension['dimension']}_"
+            f"{safe_case_value(dimension['value'])}"
+        )
+        for dimension in dimension_group
+    ]
+    return "input_" + "_x_".join(labels)
+
+
+def input_profile_tag(dimension: dict[str, Any]) -> str:
+    return (
+        f"input_profile:{dimension['profile_model']}."
+        f"{dimension['dimension']}:{dimension['value']}"
+    )
 
 
 def safe_case_value(value: Any) -> str:

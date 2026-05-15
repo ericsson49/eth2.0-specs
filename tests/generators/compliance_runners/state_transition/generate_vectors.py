@@ -85,6 +85,12 @@ def main() -> None:
         help="Profile interaction order in profile_interaction mode. Defaults to pairwise.",
     )
     parser.add_argument(
+        "--input-profile-order",
+        type=int,
+        default=1,
+        help="Input profile interaction order in input_profile mode. Defaults to one-wise.",
+    )
+    parser.add_argument(
         "--handler",
         action="append",
         help=(
@@ -113,6 +119,7 @@ def main() -> None:
         mode=args.mode,
         profile_dimensions=args.profile_dimension,
         profile_interaction_order=args.profile_interaction_order,
+        input_profile_order=args.input_profile_order,
         keep_existing=args.keep_existing,
     )
 
@@ -154,6 +161,7 @@ def generate_vectors(
     mode: str | None = None,
     profile_dimensions: list[str] | None = None,
     profile_interaction_order: int = 2,
+    input_profile_order: int = 1,
     keep_existing: bool,
     distribution: dict[str, dict[str, int]] | None = None,
 ) -> None:
@@ -180,7 +188,10 @@ def generate_vectors(
             order=profile_interaction_order,
         )
     elif generation_mode == "input_profile":
-        abstract_cases = enumerate_input_profile_cases(handlers=handlers)
+        abstract_cases = enumerate_input_profile_cases(
+            handlers=handlers,
+            order=input_profile_order,
+        )
     elif changed_only or invalid_only:
         abstract_cases = enumerate_materializable_operation_cases(handlers=handlers)
     else:

@@ -6,6 +6,7 @@ suites:
   - electra_evolution_handler_touch
   - electra_evolution_profile_partitions
   - electra_evolution_input_profiles
+  - electra_evolution_input_profile_interactions
 
 coverage:
   output: state_transition_coverage_evolution_campaign

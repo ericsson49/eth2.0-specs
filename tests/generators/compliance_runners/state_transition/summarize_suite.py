@@ -111,6 +111,8 @@ def summarize_suite(
     lines.append("")
     lines.extend(format_input_profiles(staged_cases))
     lines.append("")
+    lines.extend(format_input_profile_interactions(staged_cases))
+    lines.append("")
     lines.extend(
         format_profile_interactions(
             staged_cases,
@@ -334,11 +336,59 @@ def format_input_profiles(cases: list[dict[str, Any]]) -> list[str]:
 def collect_input_profiles(cases: list[dict[str, Any]]) -> dict[str, dict[str, set[str]]]:
     observed = defaultdict(lambda: defaultdict(set))
     for case in cases:
-        input_profiles = case.get("profile", {}).get("input_profiles", {})
+        input_profiles = sampled_input_profiles(case)
         for profile_model, profile_values in input_profiles.items():
             for dimension, value in profile_values.items():
                 observed[profile_model][dimension].add(str(value))
     return observed
+
+
+def format_input_profile_interactions(cases: list[dict[str, Any]]) -> list[str]:
+    lines = ["Input Profile Interactions", "--------------------------"]
+    observed = collect_input_profile_interactions(cases)
+    if not observed:
+        lines.append("not configured")
+        return lines
+
+    lines.append(f"dimension pairs: {len(observed)}")
+    lines.append(f"observed combinations: {sum(len(values) for values in observed.values())}")
+    top_pairs = sorted(
+        observed.items(),
+        key=lambda item: (-len(item[1]), item[0]),
+    )[:10]
+    lines.append("top pairs:")
+    for dimension_pair, values in top_pairs:
+        lines.append(f"  {' x '.join(dimension_pair)}: {len(values)}")
+    return lines
+
+
+def collect_input_profile_interactions(
+    cases: list[dict[str, Any]],
+) -> dict[tuple[str, str], set[tuple[str, str]]]:
+    observed = defaultdict(set)
+    for case in cases:
+        flattened = flatten_input_profile(sampled_input_profiles(case))
+        for left, right in combinations(flattened, 2):
+            dimension_pair = tuple(sorted((left[0], right[0])))
+            value_pair = tuple(
+                value
+                for _, value in sorted((left, right), key=lambda item: item[0])
+            )
+            observed[dimension_pair].add(value_pair)
+    return observed
+
+
+def sampled_input_profiles(case: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    profile = case.get("profile", {})
+    return profile.get("input_profile_constraints") or profile.get("input_profiles", {})
+
+
+def flatten_input_profile(input_profiles: dict[str, dict[str, Any]]) -> list[tuple[str, str]]:
+    flattened = []
+    for profile_model, profile_values in input_profiles.items():
+        for dimension, value in profile_values.items():
+            flattened.append((f"{profile_model}.{dimension}", str(value)))
+    return flattened
 
 
 def format_profile_interactions(
