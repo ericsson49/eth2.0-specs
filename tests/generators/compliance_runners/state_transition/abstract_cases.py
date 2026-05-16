@@ -403,6 +403,8 @@ def enumerate_profile_interaction_cases(
     *,
     dimensions: Iterable[str] | None = None,
     order: int = 2,
+    selection: str = "enumeration",
+    per_handler_limit: int | None = None,
 ) -> Iterable[AbstractStateTransitionCase]:
     requested_handlers = tuple(handlers)
     unknown_handlers = set(requested_handlers) - set(HANDLER_NAMES)
@@ -410,6 +412,10 @@ def enumerate_profile_interaction_cases(
         raise ValueError(f"Unknown handlers: {sorted(unknown_handlers)}")
     if order < 2:
         raise ValueError(f"Profile interaction order must be at least 2: {order}")
+    if selection not in ("enumeration", "prioritized"):
+        raise ValueError(f"Unknown profile interaction selection: {selection}")
+    if selection == "prioritized" and per_handler_limit is None:
+        raise ValueError("Prioritized profile interaction selection requires a per-handler limit")
 
     interaction_dimensions = tuple(dimensions or DEFAULT_PROFILE_PARTITION_DIMENSIONS)
     dimension_groups = tuple(combinations(interaction_dimensions, order))
@@ -429,45 +435,145 @@ def enumerate_profile_interaction_cases(
                 candidates[handler_name][dimension_group][values] = (index, profile)
 
     for handler_name in requested_handlers:
-        max_values = max(
-            len(group_candidates)
-            for group_candidates in candidates[handler_name].values()
+        handler_cases = list(
+            make_profile_interaction_cases_for_handler(
+                handler_name,
+                candidates[handler_name],
+            )
         )
-        for value_index in range(max_values):
-            for dimension_group in dimension_groups:
-                ordered_values = sorted(
-                    candidates[handler_name][dimension_group],
-                    key=profile_interaction_value_sort_key,
-                )
-                if value_index >= len(ordered_values):
-                    continue
-                values = ordered_values[value_index]
-                solution_index, profile = candidates[handler_name][dimension_group][values]
-                profile_with_tags = dict(profile)
-                profile_with_tags["profile_interaction"] = {
-                    "dimensions": list(dimension_group),
-                    "values": [str(value) for value in values],
-                }
-                profile_with_tags["coverage_tags"] = [
-                    f"handler:{handler_name}",
-                    profile_interaction_tag(dimension_group, values),
-                ]
-                yield make_abstract_case(
-                    handler_name,
-                    solution_index,
-                    profile_with_tags,
-                    case_name=profile_interaction_case_name(
-                        dimension_group,
-                        values,
-                        solution_index,
-                    ),
-                )
+        if selection == "prioritized":
+            yield from select_prioritized_profile_interaction_cases(
+                handler_cases,
+                limit=per_handler_limit,
+            )
+            continue
+        yield from handler_cases
+
+
+def make_profile_interaction_cases_for_handler(
+    handler_name: str,
+    candidates: dict[tuple[str, ...], dict[tuple[Any, ...], tuple[int, dict[str, Any]]]],
+) -> Iterable[AbstractStateTransitionCase]:
+    if not candidates:
+        return
+    max_values = max(len(group_candidates) for group_candidates in candidates.values())
+    for value_index in range(max_values):
+        for dimension_group in candidates:
+            ordered_values = sorted(
+                candidates[dimension_group],
+                key=profile_interaction_value_sort_key,
+            )
+            if value_index >= len(ordered_values):
+                continue
+            values = ordered_values[value_index]
+            solution_index, profile = candidates[dimension_group][values]
+            yield make_profile_interaction_case(
+                handler_name,
+                solution_index,
+                profile,
+                dimension_group,
+                values,
+            )
+
+
+def make_profile_interaction_case(
+    handler_name: str,
+    solution_index: int,
+    profile: dict[str, Any],
+    dimension_group: tuple[str, ...],
+    values: tuple[Any, ...],
+) -> AbstractStateTransitionCase:
+    profile_with_tags = dict(profile)
+    profile_with_tags["profile_interaction"] = {
+        "dimensions": list(dimension_group),
+        "values": [str(value) for value in values],
+    }
+    profile_with_tags["coverage_tags"] = [
+        f"handler:{handler_name}",
+        profile_interaction_tag(dimension_group, values),
+    ]
+    return make_abstract_case(
+        handler_name,
+        solution_index,
+        profile_with_tags,
+        case_name=profile_interaction_case_name(
+            dimension_group,
+            values,
+            solution_index,
+        ),
+    )
+
+
+def select_prioritized_profile_interaction_cases(
+    candidates: list[AbstractStateTransitionCase],
+    *,
+    limit: int | None,
+) -> Iterable[AbstractStateTransitionCase]:
+    if limit is None or limit >= len(candidates):
+        yield from candidates
+        return
+
+    remaining = list(candidates)
+    selected = []
+    covered_values: set[tuple[str, str]] = set()
+    covered_groups: set[tuple[str, ...]] = set()
+    covered_interactions: set[tuple[tuple[str, str], ...]] = set()
+
+    while remaining and len(selected) < limit:
+        best_index = max(
+            range(len(remaining)),
+            key=lambda index: profile_interaction_priority_score(
+                remaining[index],
+                covered_values=covered_values,
+                covered_groups=covered_groups,
+                covered_interactions=covered_interactions,
+                original_index=index,
+            ),
+        )
+        case = remaining.pop(best_index)
+        selected.append(case)
+        values = profile_interaction_case_values(case)
+        covered_values.update(values)
+        covered_groups.add(tuple(dimension for dimension, _ in values))
+        covered_interactions.add(values)
+
+    yield from selected
+
+
+def profile_interaction_priority_score(
+    case: AbstractStateTransitionCase,
+    *,
+    covered_values: set[tuple[str, str]],
+    covered_groups: set[tuple[str, ...]],
+    covered_interactions: set[tuple[tuple[str, str], ...]],
+    original_index: int,
+) -> tuple[int, int, int, int]:
+    values = profile_interaction_case_values(case)
+    group = tuple(dimension for dimension, _ in values)
+    new_group = int(group not in covered_groups)
+    new_values = sum(1 for value in values if value not in covered_values)
+    new_interaction = int(values not in covered_interactions)
+    return (new_values, new_group, new_interaction, -original_index)
+
+
+def profile_interaction_case_values(
+    case: AbstractStateTransitionCase,
+) -> tuple[tuple[str, str], ...]:
+    interaction = case.profile.get("profile_interaction", {})
+    dimensions = interaction.get("dimensions", [])
+    values = interaction.get("values", [])
+    return tuple(
+        (dimension, str(value))
+        for dimension, value in zip(dimensions, values, strict=True)
+    )
 
 
 def enumerate_input_profile_cases(
     handlers: Iterable[str],
     *,
     order: int = 1,
+    selection: str = "enumeration",
+    per_handler_limit: int | None = None,
 ) -> Iterable[AbstractStateTransitionCase]:
     requested_handlers = tuple(handlers)
     unknown_handlers = set(requested_handlers) - set(HANDLER_NAMES)
@@ -475,6 +581,10 @@ def enumerate_input_profile_cases(
         raise ValueError(f"Unknown handlers: {sorted(unknown_handlers)}")
     if order < 1:
         raise ValueError(f"Input profile order must be at least 1: {order}")
+    if selection not in ("enumeration", "prioritized"):
+        raise ValueError(f"Unknown input profile selection: {selection}")
+    if selection == "prioritized" and per_handler_limit is None:
+        raise ValueError("Prioritized input profile selection requires a per-handler limit")
 
     base_profiles = first_materializable_profiles(requested_handlers)
     for handler_name in requested_handlers:
@@ -482,13 +592,93 @@ def enumerate_input_profile_cases(
             continue
         solution_index, base_profile = base_profiles[handler_name]
         dimensions = input_profile_dimensions_for_handler(handler_name, base_profile)
-        yield from enumerate_input_profile_dimension_groups(
+        cases = enumerate_input_profile_dimension_groups(
             handler_name,
             solution_index,
             base_profile,
             dimensions,
             order=order,
         )
+        if selection == "prioritized":
+            candidates = list(cases)
+            yield from select_prioritized_input_profile_cases(
+                candidates,
+                limit=per_handler_limit,
+            )
+            continue
+        yield from cases
+
+
+def select_prioritized_input_profile_cases(
+    candidates: list[AbstractStateTransitionCase],
+    *,
+    limit: int | None,
+) -> Iterable[AbstractStateTransitionCase]:
+    if limit is None or limit >= len(candidates):
+        yield from candidates
+        return
+
+    remaining = list(candidates)
+    selected = []
+    covered_intents: set[str] = set()
+    covered_values: set[tuple[str, str]] = set()
+    covered_pairs: set[tuple[tuple[str, str], tuple[str, str]]] = set()
+
+    while remaining and len(selected) < limit:
+        best_index = max(
+            range(len(remaining)),
+            key=lambda index: input_profile_priority_score(
+                remaining[index],
+                covered_intents=covered_intents,
+                covered_values=covered_values,
+                covered_pairs=covered_pairs,
+                original_index=index,
+            ),
+        )
+        case = remaining.pop(best_index)
+        selected.append(case)
+        intent = case.profile.get("guide_intent")
+        if intent is not None:
+            covered_intents.add(intent)
+        values = input_profile_case_values(case)
+        covered_values.update(values)
+        covered_pairs.update(input_profile_case_value_pairs(values))
+
+    yield from selected
+
+
+def input_profile_priority_score(
+    case: AbstractStateTransitionCase,
+    *,
+    covered_intents: set[str],
+    covered_values: set[tuple[str, str]],
+    covered_pairs: set[tuple[tuple[str, str], tuple[str, str]]],
+    original_index: int,
+) -> tuple[int, int, int, int, int]:
+    intent = case.profile.get("guide_intent")
+    values = input_profile_case_values(case)
+    pairs = input_profile_case_value_pairs(values)
+    new_intent = int(intent is not None and intent not in covered_intents)
+    new_values = sum(1 for value in values if value not in covered_values)
+    new_pairs = sum(1 for pair in pairs if pair not in covered_pairs)
+    has_intent = int(intent is not None)
+    # Prefer earlier cases for deterministic tie-breaking.
+    return (new_intent, new_values, new_pairs, has_intent, -original_index)
+
+
+def input_profile_case_values(case: AbstractStateTransitionCase) -> tuple[tuple[str, str], ...]:
+    constraints = case.profile.get("input_profile_constraints", {})
+    values = []
+    for profile_model, profile_values in constraints.items():
+        for dimension, value in profile_values.items():
+            values.append((f"{profile_model}.{dimension}", str(value)))
+    return tuple(sorted(values))
+
+
+def input_profile_case_value_pairs(
+    values: tuple[tuple[str, str], ...],
+) -> tuple[tuple[tuple[str, str], tuple[str, str]], ...]:
+    return tuple(combinations(values, 2))
 
 
 def first_materializable_profiles(

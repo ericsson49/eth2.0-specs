@@ -85,10 +85,28 @@ def main() -> None:
         help="Profile interaction order in profile_interaction mode. Defaults to pairwise.",
     )
     parser.add_argument(
+        "--profile-interaction-selection",
+        choices=("enumeration", "prioritized"),
+        default="enumeration",
+        help=(
+            "Profile interaction candidate selection in profile_interaction mode. "
+            "Defaults to deterministic enumeration."
+        ),
+    )
+    parser.add_argument(
         "--input-profile-order",
         type=int,
         default=1,
         help="Input profile interaction order in input_profile mode. Defaults to one-wise.",
+    )
+    parser.add_argument(
+        "--input-profile-selection",
+        choices=("enumeration", "prioritized"),
+        default="enumeration",
+        help=(
+            "Input profile candidate selection in input_profile mode. "
+            "Defaults to deterministic enumeration."
+        ),
     )
     parser.add_argument(
         "--handler",
@@ -119,7 +137,9 @@ def main() -> None:
         mode=args.mode,
         profile_dimensions=args.profile_dimension,
         profile_interaction_order=args.profile_interaction_order,
+        profile_interaction_selection=args.profile_interaction_selection,
         input_profile_order=args.input_profile_order,
+        input_profile_selection=args.input_profile_selection,
         keep_existing=args.keep_existing,
     )
 
@@ -161,7 +181,9 @@ def generate_vectors(
     mode: str | None = None,
     profile_dimensions: list[str] | None = None,
     profile_interaction_order: int = 2,
+    profile_interaction_selection: str = "enumeration",
     input_profile_order: int = 1,
+    input_profile_selection: str = "enumeration",
     keep_existing: bool,
     distribution: dict[str, dict[str, int]] | None = None,
 ) -> None:
@@ -186,11 +208,15 @@ def generate_vectors(
             handlers=handlers,
             dimensions=profile_dimensions,
             order=profile_interaction_order,
+            selection=profile_interaction_selection,
+            per_handler_limit=per_handler_limit,
         )
     elif generation_mode == "input_profile":
         abstract_cases = enumerate_input_profile_cases(
             handlers=handlers,
             order=input_profile_order,
+            selection=input_profile_selection,
+            per_handler_limit=per_handler_limit,
         )
     elif changed_only or invalid_only:
         abstract_cases = enumerate_materializable_operation_cases(handlers=handlers)

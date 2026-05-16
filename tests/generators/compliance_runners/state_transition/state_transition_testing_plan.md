@@ -188,6 +188,48 @@ branches, target functions, or interactions such as `queue_state x branch`,
 Materializers currently implement much of this inverse map directly; future
 models can make the map more declarative or approximate.
 
+### Branch-Reachability Models
+
+A useful future refinement is to model handler branching logic directly, but
+only at the abstract guard level. These models should not try to translate the
+full handler implementation, full SSA form, SSZ containers, hashes, BLS
+verification, or exact post-state mutation. Instead, they should encode bounded
+path conditions over profile dimensions.
+
+In this view, MiniZinc is a target for branch-reachability models, not a target
+for faithful handler transpilation:
+
+```text
+handler branch target
+  -> abstract guard formula
+  -> solved input-profile constraints
+  -> concrete test vector
+  -> real pyspec runner validates behavior
+```
+
+For example, a `withdrawal_request` branch model can describe the early-return
+chain with predicates such as:
+
+- partial-withdrawal queue is full
+- request pubkey is present or missing
+- credentials and source address match
+- source validator is active
+- source validator is not exiting
+- source validator has been active long enough
+- request is a full exit or a partial withdrawal
+- partial withdrawal conditions are met
+
+Each branch target becomes a small constraint formula over those predicates.
+The materializer then realizes the solved predicates as a concrete pre-state
+and operation input, while the pyspec runner remains the oracle for whether the
+case actually reaches the expected outcome and code branch.
+
+This keeps the modeling problem intentionally lean. The model approximates the
+input-output relation enough to guide generation, and coverage feedback tells
+us when the approximation or materializer needs to be refined. It also gives a
+clean path from semantic coverage items to input-profile constraints without
+embedding all of the branch recipes imperatively in materializers.
+
 Both modes fit the same feedback loop:
 
 1. Choose generation mode and deterministic configuration.
