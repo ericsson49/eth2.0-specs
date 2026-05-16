@@ -1,10 +1,8 @@
 name: electra_state_transition_evolution
-description: Electra state-transition campaign organized as a test-generation maturity ladder.
+description: Electra state-transition campaign using profile-based branch reverse maps.
 output: state_transition_tests/electra_state_transition_evolution
 
 suites:
-  - electra_evolution_handler_touch
-  - electra_evolution_profile_partitions
   - electra_evolution_input_profiles
   - electra_evolution_input_profile_interactions
 

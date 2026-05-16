@@ -1,5 +1,5 @@
 name: electra_evolution_input_profiles
-description: "Evolution phase 3: sample handler-specific input profile models derived from guided-generation knobs."
+description: "Profile reverse-map suite: sample one-wise handler-specific branch and input profile dimensions."
 
 generation:
   fork: electra

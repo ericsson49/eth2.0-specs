@@ -1110,9 +1110,12 @@ def prepare_state_for_attester_slashing(spec, state, profile: dict[str, Any]):
 
     intent = profile.get("guide_intent")
     attester_profile = profile.get("input_profiles", {}).get("attester_slashing_input", {})
+    branch_target = input_profile_shape(profile, "attester_slashing_input", "branch_target")
     indices_1 = [spec.ValidatorIndex(VALIDATOR_INDEX)]
     indices_2 = [spec.ValidatorIndex(VALIDATOR_INDEX)]
-    if intent == "no_overlap" or attester_profile.get("attester_overlap") == "DISJOINT":
+    if intent == "no_overlap" or (
+        branch_target is None and attester_profile.get("attester_overlap") == "DISJOINT"
+    ):
         indices_2 = [spec.ValidatorIndex(TARGET_VALIDATOR_INDEX)]
 
     attester_slashing = get_valid_attester_slashing_by_indices(
@@ -1174,9 +1177,10 @@ def prepare_state_for_attestation(spec, state, profile: dict[str, Any]):
         transition_to(spec, state, spec.compute_start_slot_at_epoch(spec.Epoch(2)) + 1)
     slot = spec.Slot(state.slot - 1)
     attestation_profile = profile.get("input_profiles", {}).get("attestation_input", {})
+    branch_target = input_profile_shape(profile, "attestation_input", "branch_target")
     if (
         profile.get("guide_intent") == "previous_epoch_success"
-        or attestation_profile.get("slot_relation") == "PREVIOUS_EPOCH"
+        or (branch_target is None and attestation_profile.get("slot_relation") == "PREVIOUS_EPOCH")
     ):
         slot = spec.Slot(spec.compute_start_slot_at_epoch(spec.Epoch(2)) - 1)
     attestation = get_valid_attestation(
@@ -1637,11 +1641,14 @@ def build_signed_voluntary_exit(spec, state, validator_index: int, profile: dict
     voluntary_exit_epoch = current_epoch
     if (
         profile.get("guide_intent") == "future_epoch"
-        or input_profile_shape(
-            profile,
-            "voluntary_exit_input",
-            "exit_epoch_relation",
-        ) == "EXIT_EPOCH_FUTURE"
+        or (
+            input_profile_shape(profile, "voluntary_exit_input", "branch_target") is None
+            and input_profile_shape(
+                profile,
+                "voluntary_exit_input",
+                "exit_epoch_relation",
+            ) == "EXIT_EPOCH_FUTURE"
+        )
     ):
         voluntary_exit_epoch = spec.Epoch(current_epoch + 1)
 

@@ -1,5 +1,5 @@
 name: electra_evolution_input_profile_interactions
-description: "Evolution phase 4: sample pairwise interactions across handler-specific input profile models."
+description: "Profile reverse-map suite: sample pairwise interactions across handler-specific branch and input profile dimensions."
 
 generation:
   fork: electra
