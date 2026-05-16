@@ -24,8 +24,20 @@ class PendingDepositBridgeState(Enum):
     ETH1_BRIDGE_PENDING = auto()
 
 
+class PendingDepositsBranchTarget(Enum):
+    PENDING_DEPOSITS_SUCCESS_TOP_UP = auto()
+    PENDING_DEPOSITS_NOT_FINALIZED = auto()
+    PENDING_DEPOSITS_CHURN_LIMIT_REACHED = auto()
+    PENDING_DEPOSITS_EXITED_VALIDATOR_POSTPONED = auto()
+    PENDING_DEPOSITS_WITHDRAWABLE_VALIDATOR = auto()
+    PENDING_DEPOSITS_ETH1_BRIDGE_BLOCKS_REQUEST = auto()
+    PENDING_DEPOSITS_MAX_PER_EPOCH_REACHED = auto()
+    PENDING_DEPOSITS_NEW_VALIDATOR = auto()
+
+
 @dataclass
 class PendingDepositsInputProfile:
+    branch_target: PendingDepositsBranchTarget
     deposit_kind: PendingDepositKind
     finality_shape: PendingDepositFinality
     churn_shape: PendingDepositChurn

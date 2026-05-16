@@ -71,6 +71,7 @@ HANDLER_NAMES = (
 
 GUIDED_OPERATION_INTENTS = guided_operation_intents()
 DEFAULT_PROFILE_PARTITION_DIMENSIONS = (
+    "branch_target",
     "withdrawal_credential_type",
     "activation_epoch_to_current_epoch",
     "exit_epoch_to_current_epoch",
@@ -130,12 +131,14 @@ INPUT_PROFILE_DIMENSIONS = {
         "churn_shape",
     ),
     "pending_deposits_input": (
+        "branch_target",
         "deposit_kind",
         "finality_shape",
         "churn_shape",
         "bridge_state",
     ),
     "pending_consolidations_input": (
+        "branch_target",
         "source_shape",
         "balance_shape",
         "queue_shape",
@@ -147,8 +150,9 @@ INPUT_PROFILE_DIMENSIONS = {
         "pending_deposits",
         "pending_request",
     ),
-    "epoch_boundary": ("epoch_boundary_shape",),
+    "epoch_boundary": ("branch_target", "epoch_boundary_shape"),
     "participation": (
+        "branch_target",
         "participation_shape",
         "finality_shape",
         "inactivity_leak",
@@ -1063,7 +1067,7 @@ def input_intent_for_dimension(
     if profile_model == "queue":
         return queue_input_intent(handler_name, dimension, value)
     if profile_model == "epoch_boundary":
-        return epoch_boundary_input_intent(handler_name, value)
+        return epoch_boundary_input_intent(handler_name, dimension, value)
     if profile_model == "participation":
         return participation_input_intent(handler_name, dimension, value)
     if profile_model == "validator_state":
@@ -1210,36 +1214,35 @@ def consolidation_request_input_intent(dimension: str, value: str) -> str | None
 
 
 def pending_deposits_input_intent(dimension: str, value: str) -> str | None:
-    if dimension == "deposit_kind" and value == "EXISTING_ACTIVE_VALIDATOR":
-        return "success_top_up"
-    if dimension == "deposit_kind" and value == "NEW_VALIDATOR":
-        return "new_validator"
-    if dimension == "deposit_kind" and value == "EXITING_VALIDATOR":
-        return "exited_validator_postponed"
-    if dimension == "deposit_kind" and value == "WITHDRAWABLE_VALIDATOR":
-        return "withdrawable_validator"
-    if dimension == "finality_shape" and value == "NOT_FINALIZED":
-        return "not_finalized"
-    if dimension == "churn_shape" and value == "CHURN_LIMIT_REACHED":
-        return "churn_limit_reached"
-    if dimension == "bridge_state" and value == "ETH1_BRIDGE_PENDING":
-        return "eth1_bridge_blocks_request"
+    if dimension == "branch_target":
+        return {
+            "PENDING_DEPOSITS_SUCCESS_TOP_UP": "success_top_up",
+            "PENDING_DEPOSITS_NOT_FINALIZED": "not_finalized",
+            "PENDING_DEPOSITS_CHURN_LIMIT_REACHED": "churn_limit_reached",
+            "PENDING_DEPOSITS_EXITED_VALIDATOR_POSTPONED": "exited_validator_postponed",
+            "PENDING_DEPOSITS_WITHDRAWABLE_VALIDATOR": "withdrawable_validator",
+            "PENDING_DEPOSITS_ETH1_BRIDGE_BLOCKS_REQUEST": "eth1_bridge_blocks_request",
+            "PENDING_DEPOSITS_MAX_PER_EPOCH_REACHED": "max_per_epoch_reached",
+            "PENDING_DEPOSITS_NEW_VALIDATOR": "new_validator",
+        }.get(value)
     return None
 
 
 def pending_consolidations_input_intent(dimension: str, value: str) -> str | None:
-    if dimension == "source_shape" and value == "SOURCE_NOT_WITHDRAWABLE":
-        return "not_withdrawable"
-    if dimension == "source_shape" and value == "SOURCE_SLASHED":
-        return "slashed_source_skipped"
-    if dimension == "balance_shape" and value == "BALANCE_LESS_THAN_EFFECTIVE_BALANCE":
-        return "source_balance_less_than_effective_balance"
-    if dimension == "balance_shape" and value == "BALANCE_GREATER_THAN_EFFECTIVE_BALANCE":
-        return "source_balance_greater_than_effective_balance"
-    if dimension == "queue_shape" and value == "BLOCKED_AFTER_PROCESSED":
-        return "blocked_after_processed"
-    if dimension == "source_shape" and value == "SOURCE_WITHDRAWABLE":
-        return "success"
+    if dimension == "branch_target":
+        return {
+            "PENDING_CONSOLIDATIONS_EMPTY_QUEUE": "empty_queue",
+            "PENDING_CONSOLIDATIONS_SUCCESS": "success",
+            "PENDING_CONSOLIDATIONS_NOT_WITHDRAWABLE": "not_withdrawable",
+            "PENDING_CONSOLIDATIONS_SLASHED_SOURCE_SKIPPED": "slashed_source_skipped",
+            "PENDING_CONSOLIDATIONS_BALANCE_LESS_THAN_EFFECTIVE_BALANCE": (
+                "source_balance_less_than_effective_balance"
+            ),
+            "PENDING_CONSOLIDATIONS_BALANCE_GREATER_THAN_EFFECTIVE_BALANCE": (
+                "source_balance_greater_than_effective_balance"
+            ),
+            "PENDING_CONSOLIDATIONS_BLOCKED_AFTER_PROCESSED": "blocked_after_processed",
+        }.get(value)
     return None
 
 
@@ -1284,94 +1287,108 @@ def queue_input_intent(handler_name: str, dimension: str, value: str) -> str | N
     return None
 
 
-def epoch_boundary_input_intent(handler_name: str, value: str) -> str | None:
-    if value == "GENESIS":
+def epoch_boundary_input_intent(handler_name: str, dimension: str, value: str) -> str | None:
+    if dimension == "branch_target":
         return {
-            "justification_and_finalization": "genesis_skip",
-            "inactivity_updates": "genesis_skip",
-            "rewards_and_penalties": "genesis_skip",
-            "sync_committee_updates": "genesis_period_boundary",
-        }.get(handler_name)
-    if value == "PERIOD_BOUNDARY":
-        return {
-            "eth1_data_reset": "period_boundary",
-            "historical_summaries_update": "period_boundary",
-            "sync_committee_updates": "period_boundary",
-        }.get(handler_name)
-    if value == "NON_BOUNDARY":
-        return {
-            "eth1_data_reset": "non_boundary",
-            "historical_summaries_update": "non_boundary",
-            "sync_committee_updates": "non_boundary",
-        }.get(handler_name)
+            "EPOCH_GENESIS_SKIP": {
+                "justification_and_finalization": "genesis_skip",
+                "inactivity_updates": "genesis_skip",
+                "rewards_and_penalties": "genesis_skip",
+            },
+            "ETH1_DATA_PERIOD_BOUNDARY": {"eth1_data_reset": "period_boundary"},
+            "ETH1_DATA_NON_BOUNDARY": {"eth1_data_reset": "non_boundary"},
+            "HISTORICAL_SUMMARIES_PERIOD_BOUNDARY": {
+                "historical_summaries_update": "period_boundary"
+            },
+            "HISTORICAL_SUMMARIES_NON_BOUNDARY": {
+                "historical_summaries_update": "non_boundary"
+            },
+            "SYNC_COMMITTEE_PERIOD_BOUNDARY": {"sync_committee_updates": "period_boundary"},
+            "SYNC_COMMITTEE_GENESIS_PERIOD_BOUNDARY": {
+                "sync_committee_updates": "genesis_period_boundary"
+            },
+            "SYNC_COMMITTEE_NON_BOUNDARY": {"sync_committee_updates": "non_boundary"},
+            "SLASHINGS_RESET_NONZERO": {"slashings_reset": "reset_nonzero"},
+            "SLASHINGS_RESET_ALREADY_ZERO": {"slashings_reset": "already_zero"},
+            "RANDAO_RESET_TO_CURRENT_MIX": {"randao_mixes_reset": "reset_to_current_mix"},
+            "RANDAO_ALREADY_CURRENT_MIX": {"randao_mixes_reset": "already_current_mix"},
+        }.get(value, {}).get(handler_name)
     return None
 
 
 def participation_input_intent(handler_name: str, dimension: str, value: str) -> str | None:
-    if dimension == "participation_shape":
-        if value == "PARTICIPATION_NONE":
-            return {
-                "inactivity_updates": "non_participating_no_leak",
-                "rewards_and_penalties": "empty_participation_penalty",
-                "participation_flag_updates": "all_zero",
-                "sync_aggregate": "none_participate",
-            }.get(handler_name)
-        if value == "PARTICIPATION_FULL":
-            return {
-                "rewards_and_penalties": "full_participation_reward",
-                "participation_flag_updates": "previous_filled",
-                "sync_aggregate": "all_participate",
-            }.get(handler_name)
-        if value == "PARTICIPATION_TARGET_ONLY":
-            return {
-                "justification_and_finalization": "current_justified",
-                "inactivity_updates": "participating_recovery",
-                "sync_aggregate": "majority_participate",
-            }.get(handler_name)
-        if value == "PARTICIPATION_POOR_SUPPORT":
-            return {
-                "justification_and_finalization": "poor_support",
-                "sync_aggregate": "minority_participate",
-            }.get(handler_name)
-    if dimension == "finality_shape":
+    if dimension == "branch_target":
         return {
-            "FINALITY_CURRENT_JUSTIFIED": "current_justified",
-            "FINALITY_PREVIOUS_JUSTIFIED": "previous_justified",
-            "FINALITY_FINALIZE_CURRENT": "finalize_current",
-        }.get(value) if handler_name == "justification_and_finalization" else None
-    if dimension == "inactivity_leak" and value == "True":
-        return {
-            "inactivity_updates": "non_participating_leak",
-            "rewards_and_penalties": "inactivity_leak_penalty",
-        }.get(handler_name)
+            "PARTICIPATION_FINALITY_GENESIS_SKIP": {"justification_and_finalization": "genesis_skip"},
+            "PARTICIPATION_FINALITY_CURRENT_JUSTIFIED": {
+                "justification_and_finalization": "current_justified"
+            },
+            "PARTICIPATION_FINALITY_PREVIOUS_JUSTIFIED": {
+                "justification_and_finalization": "previous_justified"
+            },
+            "PARTICIPATION_FINALITY_POOR_SUPPORT": {"justification_and_finalization": "poor_support"},
+            "PARTICIPATION_FINALITY_FINALIZE_CURRENT": {"justification_and_finalization": "finalize_current"},
+            "PARTICIPATION_FINALITY_FINALIZE_234": {"justification_and_finalization": "finalize_234"},
+            "PARTICIPATION_FINALITY_FINALIZE_23": {"justification_and_finalization": "finalize_23"},
+            "PARTICIPATION_FINALITY_FINALIZE_123": {"justification_and_finalization": "finalize_123"},
+            "PARTICIPATION_INACTIVITY_GENESIS_SKIP": {"inactivity_updates": "genesis_skip"},
+            "PARTICIPATION_INACTIVITY_PARTICIPATING_RECOVERY": {
+                "inactivity_updates": "participating_recovery"
+            },
+            "PARTICIPATION_INACTIVITY_NON_PARTICIPATING_NO_LEAK": {
+                "inactivity_updates": "non_participating_no_leak"
+            },
+            "PARTICIPATION_INACTIVITY_NON_PARTICIPATING_LEAK": {
+                "inactivity_updates": "non_participating_leak"
+            },
+            "PARTICIPATION_REWARDS_GENESIS_SKIP": {"rewards_and_penalties": "genesis_skip"},
+            "PARTICIPATION_REWARDS_FULL_PARTICIPATION": {
+                "rewards_and_penalties": "full_participation_reward"
+            },
+            "PARTICIPATION_REWARDS_EMPTY_PARTICIPATION": {
+                "rewards_and_penalties": "empty_participation_penalty"
+            },
+            "PARTICIPATION_REWARDS_INACTIVITY_LEAK_PENALTY": {
+                "rewards_and_penalties": "inactivity_leak_penalty"
+            },
+            "PARTICIPATION_REWARDS_INACTIVITY_LEAK_FULL_PARTICIPATION": {
+                "rewards_and_penalties": "inactivity_leak_full_participation"
+            },
+            "PARTICIPATION_FLAGS_ALL_ZERO": {"participation_flag_updates": "all_zero"},
+            "PARTICIPATION_FLAGS_CURRENT_FILLED": {
+                "participation_flag_updates": "current_filled"
+            },
+            "PARTICIPATION_FLAGS_PREVIOUS_FILLED": {
+                "participation_flag_updates": "previous_filled"
+            },
+        }.get(value, {}).get(handler_name)
     return None
 
 
 def validator_state_input_intent(handler_name: str, dimension: str, value: str) -> str | None:
-    if handler_name == "registry_updates":
-        if dimension == "activation_epoch_to_current_epoch" and value == ">":
-            return "activation_queue"
-        if dimension == "effective_balance_lte_ejection_balance" and value == "True":
-            return "ejection"
-    if handler_name == "effective_balance_updates":
-        if dimension == "balance_to_effective_balance" and value == "<":
-            return "step_down"
-        if dimension == "balance_to_effective_balance" and value == ">":
-            return "step_up"
-        if dimension == "effective_balance_to_max_effective_balance" and value == "=":
-            return "cap_at_max"
-    if handler_name == "slashings":
-        if dimension == "slashed" and value == "True":
-            return "penalty_applied"
-        if dimension == "slashed" and value == "False":
-            return "no_slashed_validators"
-        if dimension == "balance_is_zero" and value == "True":
-            return "zero_slashing_balance"
-    if handler_name == "deposit_request":
-        if dimension == "activation_eligibility_epoch_set" and value == "True":
-            return "start_index_set"
-        if dimension == "activation_eligibility_epoch_set" and value == "False":
-            return "start_index_unset"
+    if dimension == "branch_target":
+        return {
+            "DEPOSIT_REQUEST_START_INDEX_UNSET": {
+                "deposit_request": "start_index_unset",
+            },
+            "DEPOSIT_REQUEST_START_INDEX_SET": {
+                "deposit_request": "start_index_set",
+            },
+            "REGISTRY_NO_CHANGE": {"registry_updates": "no_change"},
+            "REGISTRY_ACTIVATION_QUEUE": {"registry_updates": "activation_queue"},
+            "REGISTRY_EJECTION": {"registry_updates": "ejection"},
+            "REGISTRY_ACTIVATION": {"registry_updates": "activation"},
+            "SLASHINGS_NO_SLASHED_VALIDATORS": {"slashings": "no_slashed_validators"},
+            "SLASHINGS_PENALTY_APPLIED": {"slashings": "penalty_applied"},
+            "SLASHINGS_WRONG_WITHDRAWABLE_EPOCH": {"slashings": "wrong_withdrawable_epoch"},
+            "SLASHINGS_ZERO_SLASHING_BALANCE": {"slashings": "zero_slashing_balance"},
+            "EFFECTIVE_BALANCE_NO_CHANGE_AT_THRESHOLD": {
+                "effective_balance_updates": "no_change_at_threshold"
+            },
+            "EFFECTIVE_BALANCE_STEP_DOWN": {"effective_balance_updates": "step_down"},
+            "EFFECTIVE_BALANCE_STEP_UP": {"effective_balance_updates": "step_up"},
+            "EFFECTIVE_BALANCE_CAP_AT_MAX": {"effective_balance_updates": "cap_at_max"},
+        }.get(value, {}).get(handler_name)
     return None
 
 

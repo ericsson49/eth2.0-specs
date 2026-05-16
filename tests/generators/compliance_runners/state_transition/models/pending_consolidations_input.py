@@ -19,8 +19,19 @@ class PendingConsolidationQueueShape(Enum):
     BLOCKED_AFTER_PROCESSED = auto()
 
 
+class PendingConsolidationsBranchTarget(Enum):
+    PENDING_CONSOLIDATIONS_EMPTY_QUEUE = auto()
+    PENDING_CONSOLIDATIONS_SUCCESS = auto()
+    PENDING_CONSOLIDATIONS_NOT_WITHDRAWABLE = auto()
+    PENDING_CONSOLIDATIONS_SLASHED_SOURCE_SKIPPED = auto()
+    PENDING_CONSOLIDATIONS_BALANCE_LESS_THAN_EFFECTIVE_BALANCE = auto()
+    PENDING_CONSOLIDATIONS_BALANCE_GREATER_THAN_EFFECTIVE_BALANCE = auto()
+    PENDING_CONSOLIDATIONS_BLOCKED_AFTER_PROCESSED = auto()
+
+
 @dataclass
 class PendingConsolidationsInputProfile:
+    branch_target: PendingConsolidationsBranchTarget
     source_shape: PendingConsolidationSourceShape
     balance_shape: PendingConsolidationBalanceShape
     queue_shape: PendingConsolidationQueueShape

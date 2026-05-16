@@ -15,8 +15,27 @@ class ComparisonOp(Enum):
     GT = auto()
 
 
+class ValidatorStateBranchTarget(Enum):
+    DEPOSIT_REQUEST_START_INDEX_UNSET = auto()
+    DEPOSIT_REQUEST_START_INDEX_SET = auto()
+    REGISTRY_NO_CHANGE = auto()
+    REGISTRY_ACTIVATION_QUEUE = auto()
+    REGISTRY_EJECTION = auto()
+    REGISTRY_ACTIVATION = auto()
+    SLASHINGS_NO_SLASHED_VALIDATORS = auto()
+    SLASHINGS_PENALTY_APPLIED = auto()
+    SLASHINGS_WRONG_WITHDRAWABLE_EPOCH = auto()
+    SLASHINGS_ZERO_SLASHING_BALANCE = auto()
+    EFFECTIVE_BALANCE_NO_CHANGE_AT_THRESHOLD = auto()
+    EFFECTIVE_BALANCE_STEP_DOWN = auto()
+    EFFECTIVE_BALANCE_STEP_UP = auto()
+    EFFECTIVE_BALANCE_CAP_AT_MAX = auto()
+
+
 @dataclass
 class ValidatorStateProfile:
+    branch_target: ValidatorStateBranchTarget
+
     # Lifecycle
     activation_eligibility_epoch_set: bool
     activation_eligibility_epoch_finalized: bool

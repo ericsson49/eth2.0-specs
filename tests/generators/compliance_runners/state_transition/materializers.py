@@ -1503,6 +1503,10 @@ def input_profile_shape(
     return profile.get("input_profiles", {}).get(profile_model, {}).get(dimension, default)
 
 
+def has_branch_target(profile: dict[str, Any], profile_model: str) -> bool:
+    return input_profile_shape(profile, profile_model, "branch_target") is not None
+
+
 def has_input_profile_constraints(profile: dict[str, Any], profile_model: str) -> bool:
     return profile_model in profile.get("input_profile_constraints", {})
 
@@ -2406,7 +2410,7 @@ def fill_pending_consolidations(spec, state, source_index: int, target_index: in
 
 
 def prepare_state_for_pending_deposits(spec, state, profile: dict[str, Any]) -> None:
-    if profile.get("profile_driven"):
+    if profile.get("profile_driven") and not has_branch_target(profile, "pending_deposits_input"):
         prepare_state_for_pending_deposits_profiles(spec, state, profile)
         return
 
@@ -2599,7 +2603,10 @@ def add_pending_deposit(
 
 
 def prepare_state_for_pending_consolidations(spec, state, profile: dict[str, Any]) -> None:
-    if profile.get("profile_driven"):
+    if profile.get("profile_driven") and not has_branch_target(
+        profile,
+        "pending_consolidations_input",
+    ):
         prepare_state_for_pending_consolidations_profiles(spec, state, profile)
         return
 
@@ -2894,7 +2901,10 @@ def prepare_state_for_justification_and_finalization(
     state,
     profile: dict[str, Any],
 ) -> None:
-    if profile.get("profile_driven"):
+    if profile.get("profile_driven") and not (
+        has_branch_target(profile, "participation")
+        or has_branch_target(profile, "epoch_boundary")
+    ):
         prepare_state_for_participation_profiles(spec, state, profile, for_finality=True)
         return
 
@@ -3005,7 +3015,10 @@ def prepare_state_for_finalization_pattern(
 
 
 def prepare_state_for_inactivity_updates(spec, state, profile: dict[str, Any]) -> None:
-    if profile.get("profile_driven"):
+    if profile.get("profile_driven") and not (
+        has_branch_target(profile, "participation")
+        or has_branch_target(profile, "epoch_boundary")
+    ):
         prepare_state_for_participation_profiles(spec, state, profile)
         state.inactivity_scores[VALIDATOR_INDEX] = spec.uint64(5)
         return
@@ -3028,7 +3041,10 @@ def prepare_state_for_inactivity_updates(spec, state, profile: dict[str, Any]) -
 
 
 def prepare_state_for_rewards_and_penalties(spec, state, profile: dict[str, Any]) -> None:
-    if profile.get("profile_driven"):
+    if profile.get("profile_driven") and not (
+        has_branch_target(profile, "participation")
+        or has_branch_target(profile, "epoch_boundary")
+    ):
         prepare_state_for_participation_profiles(spec, state, profile)
         state.inactivity_scores[VALIDATOR_INDEX] = spec.uint64(16)
         return
@@ -3053,7 +3069,7 @@ def prepare_state_for_rewards_and_penalties(spec, state, profile: dict[str, Any]
 
 
 def prepare_state_for_participation_flag_updates(spec, state, profile: dict[str, Any]) -> None:
-    if profile.get("profile_driven"):
+    if profile.get("profile_driven") and not has_branch_target(profile, "participation"):
         prepare_state_for_participation_profiles(spec, state, profile)
         return
 

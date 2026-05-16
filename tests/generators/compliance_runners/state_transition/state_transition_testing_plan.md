@@ -242,6 +242,14 @@ treats that dimension as authoritative and constructs a compatible pre-state
 plus request, then the normal runner validates the outcome and the coverage
 report verifies that the intended branch was reached.
 
+Epoch-processing handlers use the same shape, but their branch targets live on
+state/profile models instead of operation-input models. Validator-state branch
+targets cover deposit requests, registry updates, slashings, and effective
+balance updates. Participation and epoch-boundary branch targets cover
+finality, inactivity, rewards, participation flag rotation, reset handlers, and
+sync committee updates. Pending queue processors use dedicated pending-deposit
+and pending-consolidation branch targets.
+
 Both modes fit the same feedback loop:
 
 1. Choose generation mode and deterministic configuration.
