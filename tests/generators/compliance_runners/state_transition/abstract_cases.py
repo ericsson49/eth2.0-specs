@@ -116,6 +116,7 @@ INPUT_PROFILE_DIMENSIONS = {
     "voluntary_exit_input": ("exit_epoch_relation",),
     "withdrawal_request_input": ("request_kind", "branch_target"),
     "consolidation_request_input": (
+        "branch_target",
         "request_kind",
         "target_lookup_shape",
         "source_activity_shape",
@@ -1078,19 +1079,16 @@ def operation_input_intent(handler_name: str, dimension: str, value: str) -> str
         return {
             "bls_to_execution_change": "out_of_range",
             "withdrawal_request": "pubkey_missing",
-            "consolidation_request": "source_missing",
         }.get(handler_name)
     if dimension == "source_address_shape" and value == "SOURCE_ADDRESS_INVALID":
         return {
             "withdrawal_request": "bad_source_address",
-            "consolidation_request": "bad_source_address",
         }.get(handler_name)
     if (
         dimension == "source_target_relation"
         and value == "SOURCE_TARGET_SAME"
-        and handler_name == "consolidation_request"
     ):
-        return "source_equals_target"
+        return None
     return None
 
 
@@ -1181,26 +1179,28 @@ def withdrawal_request_input_intent(dimension: str, value: str) -> str | None:
 
 
 def consolidation_request_input_intent(dimension: str, value: str) -> str | None:
-    if dimension == "request_kind" and value == "SWITCH_TO_COMPOUNDING_REQUEST":
-        return "switch_to_compounding_success"
-    if dimension == "request_kind" and value == "CONSOLIDATION_REQUEST":
-        return "success"
-    if dimension == "target_lookup_shape" and value == "TARGET_MISSING":
-        return "target_missing"
-    if dimension == "source_activity_shape" and value == "SOURCE_INACTIVE":
-        return "source_inactive"
-    if dimension == "source_activity_shape" and value == "SOURCE_EXITING":
-        return "source_exiting"
-    if dimension == "source_activity_shape" and value == "SOURCE_NOT_ACTIVE_LONG_ENOUGH":
-        return "source_not_active_long_enough"
-    if dimension == "target_activity_shape" and value == "TARGET_INACTIVE":
-        return "target_inactive"
-    if dimension == "target_activity_shape" and value == "TARGET_EXITING":
-        return "target_exiting"
-    if dimension == "target_credential_shape" and value == "TARGET_ETH1":
-        return "target_not_compounding"
-    if dimension == "churn_shape" and value == "CHURN_TOO_LOW":
-        return "churn_too_low"
+    if dimension == "branch_target":
+        return {
+            "CONSOLIDATION_SWITCH_SUCCESS": "switch_to_compounding_success",
+            "CONSOLIDATION_SWITCH_PUBKEY_MISSING": "switch_pubkey_missing",
+            "CONSOLIDATION_SWITCH_BAD_SOURCE_ADDRESS": "switch_bad_source_address",
+            "CONSOLIDATION_SWITCH_SOURCE_INACTIVE": "switch_source_inactive",
+            "CONSOLIDATION_SWITCH_SOURCE_EXITING": "switch_source_exiting",
+            "CONSOLIDATION_SOURCE_EQUALS_TARGET": "source_equals_target",
+            "CONSOLIDATION_QUEUE_FULL": "queue_full",
+            "CONSOLIDATION_CHURN_TOO_LOW": "churn_too_low",
+            "CONSOLIDATION_SOURCE_MISSING": "source_missing",
+            "CONSOLIDATION_TARGET_MISSING": "target_missing",
+            "CONSOLIDATION_BAD_SOURCE_ADDRESS": "bad_source_address",
+            "CONSOLIDATION_TARGET_NOT_COMPOUNDING": "target_not_compounding",
+            "CONSOLIDATION_SOURCE_INACTIVE": "source_inactive",
+            "CONSOLIDATION_TARGET_INACTIVE": "target_inactive",
+            "CONSOLIDATION_SOURCE_EXITING": "source_exiting",
+            "CONSOLIDATION_TARGET_EXITING": "target_exiting",
+            "CONSOLIDATION_SOURCE_NOT_ACTIVE_LONG_ENOUGH": "source_not_active_long_enough",
+            "CONSOLIDATION_SOURCE_PENDING_WITHDRAWAL": "source_pending_withdrawal",
+            "CONSOLIDATION_SUCCESS": "success",
+        }.get(value)
     return None
 
 
@@ -1250,7 +1250,7 @@ def queue_input_intent(handler_name: str, dimension: str, value: str) -> str | N
             "voluntary_exit": "pending_withdrawal",
         }.get(handler_name)
     if dimension == "pending_consolidations" and value == "FULL":
-        return {"consolidation_request": "queue_full"}.get(handler_name)
+        return None
     if dimension == "pending_consolidations" and value == "EMPTY":
         return {"pending_consolidations": "empty_queue"}.get(handler_name)
     if dimension == "pending_deposits" and value == "FULL":
@@ -1261,7 +1261,6 @@ def queue_input_intent(handler_name: str, dimension: str, value: str) -> str | N
         return {
             "withdrawal_request": "full_exit_with_pending_withdrawal",
             "voluntary_exit": "pending_withdrawal",
-            "consolidation_request": "source_pending_withdrawal",
         }.get(handler_name)
     if dimension == "pending_request" and value == "REQUEST_CONSOLIDATION":
         return {"pending_consolidations": "success"}.get(handler_name)

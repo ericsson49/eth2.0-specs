@@ -230,13 +230,15 @@ us when the approximation or materializer needs to be refined. It also gives a
 clean path from semantic coverage items to input-profile constraints without
 embedding all of the branch recipes imperatively in materializers.
 
-The first concrete prototype applies this shape to `withdrawal_request`. Its
-input profile includes a `branch_target` dimension for the queue-full guard,
-pubkey/source-address early returns, validator activity checks, full-exit
-pending-withdrawal path, partial-withdrawal rejection path, and the two success
-paths. The materializer treats that dimension as authoritative and constructs a
-compatible pre-state plus request, then the normal runner validates the outcome
-and the coverage report verifies that the intended branch was reached.
+The first concrete prototypes apply this shape to `withdrawal_request` and
+`consolidation_request`. Their input profiles include a `branch_target`
+dimension for the relevant guard chain: queue guards, lookup failures,
+credential/source-address checks, activity and exit checks, pending-request
+checks, and success paths. For consolidation requests, the branch target also
+covers the preliminary switch-to-compounding helper. The materializer treats
+that dimension as authoritative and constructs a compatible pre-state plus
+request, then the normal runner validates the outcome and the coverage report
+verifies that the intended branch was reached.
 
 Both modes fit the same feedback loop:
 

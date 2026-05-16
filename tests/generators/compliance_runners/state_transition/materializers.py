@@ -1844,6 +1844,16 @@ def apply_consolidation_profile(
 ) -> None:
     if "input_profiles" not in profile:
         return
+    if apply_consolidation_branch_target(
+        spec,
+        state,
+        source_index,
+        target_index,
+        consolidation_request,
+        profile,
+    ):
+        return
+
     request_profile = profile.get("input_profiles", {}).get("consolidation_request_input", {})
     if request_profile.get("request_kind") == "SWITCH_TO_COMPOUNDING_REQUEST":
         prepare_switch_to_compounding_source(spec, state, source_index)
@@ -1924,6 +1934,121 @@ def apply_consolidation_profile(
                 withdrawable_epoch=spec.Epoch(spec.get_current_epoch(state) + 1),
             )
         )
+
+
+def consolidation_branch_target(profile: dict[str, Any]) -> str | None:
+    return input_profile_shape(profile, "consolidation_request_input", "branch_target")
+
+
+def apply_consolidation_branch_target(
+    spec,
+    state,
+    source_index: int,
+    target_index: int,
+    consolidation_request,
+    profile: dict[str, Any],
+) -> bool:
+    branch_target = consolidation_branch_target(profile)
+    if branch_target is None:
+        return False
+
+    state.pending_consolidations = spec.List[
+        spec.PendingConsolidation, spec.PENDING_CONSOLIDATIONS_LIMIT
+    ]()
+    state.pending_partial_withdrawals = spec.List[
+        spec.PendingPartialWithdrawal, spec.PENDING_PARTIAL_WITHDRAWALS_LIMIT
+    ]()
+
+    if branch_target.startswith("CONSOLIDATION_SWITCH_"):
+        prepare_switch_to_compounding_source(spec, state, source_index)
+        consolidation_request.source_address = SOURCE_ADDRESS
+        consolidation_request.source_pubkey = state.validators[source_index].pubkey
+        consolidation_request.target_pubkey = state.validators[source_index].pubkey
+        current_epoch = spec.get_current_epoch(state)
+
+        if branch_target == "CONSOLIDATION_SWITCH_SUCCESS":
+            return True
+        if branch_target == "CONSOLIDATION_SWITCH_PUBKEY_MISSING":
+            consolidation_request.source_pubkey = b"\xff" * 48
+            consolidation_request.target_pubkey = b"\xff" * 48
+        elif branch_target == "CONSOLIDATION_SWITCH_BAD_SOURCE_ADDRESS":
+            consolidation_request.source_address = invalid_source_address()
+        elif branch_target == "CONSOLIDATION_SWITCH_SOURCE_INACTIVE":
+            state.validators[source_index].activation_epoch = spec.FAR_FUTURE_EPOCH
+        elif branch_target == "CONSOLIDATION_SWITCH_SOURCE_EXITING":
+            state.validators[source_index].exit_epoch = spec.Epoch(current_epoch + 1)
+        else:
+            raise ValueError(f"Unsupported consolidation branch target: {branch_target}")
+        return True
+
+    prepare_consolidation_source(spec, state, source_index)
+    prepare_target_for_consolidation(spec, state, target_index)
+    consolidation_request.source_address = SOURCE_ADDRESS
+    consolidation_request.source_pubkey = state.validators[source_index].pubkey
+    consolidation_request.target_pubkey = state.validators[target_index].pubkey
+    current_epoch = spec.get_current_epoch(state)
+
+    if branch_target == "CONSOLIDATION_SOURCE_EQUALS_TARGET":
+        consolidation_request.target_pubkey = state.validators[source_index].pubkey
+    elif branch_target == "CONSOLIDATION_QUEUE_FULL":
+        fill_pending_consolidations(spec, state, source_index, target_index)
+    elif branch_target == "CONSOLIDATION_CHURN_TOO_LOW":
+        set_compounding_withdrawal_credential_with_balance(
+            spec,
+            state,
+            source_index,
+            effective_balance=spec.MIN_ACTIVATION_BALANCE,
+            balance=spec.MIN_ACTIVATION_BALANCE,
+            address=SOURCE_ADDRESS,
+        )
+        set_compounding_withdrawal_credential_with_balance(
+            spec,
+            state,
+            target_index,
+            effective_balance=spec.MIN_ACTIVATION_BALANCE,
+            balance=spec.MIN_ACTIVATION_BALANCE,
+            address=TARGET_ADDRESS,
+        )
+    else:
+        prepare_churn_helper(spec, state)
+        if branch_target == "CONSOLIDATION_SOURCE_MISSING":
+            consolidation_request.source_pubkey = b"\xff" * 48
+        elif branch_target == "CONSOLIDATION_TARGET_MISSING":
+            consolidation_request.target_pubkey = b"\xff" * 48
+        elif branch_target == "CONSOLIDATION_BAD_SOURCE_ADDRESS":
+            consolidation_request.source_address = invalid_source_address()
+        elif branch_target == "CONSOLIDATION_TARGET_NOT_COMPOUNDING":
+            set_eth1_withdrawal_credential_with_balance(
+                spec,
+                state,
+                target_index,
+                effective_balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+                balance=spec.MAX_EFFECTIVE_BALANCE_ELECTRA,
+                address=TARGET_ADDRESS,
+            )
+        elif branch_target == "CONSOLIDATION_SOURCE_INACTIVE":
+            state.validators[source_index].activation_epoch = spec.FAR_FUTURE_EPOCH
+        elif branch_target == "CONSOLIDATION_TARGET_INACTIVE":
+            state.validators[target_index].activation_epoch = spec.FAR_FUTURE_EPOCH
+        elif branch_target == "CONSOLIDATION_SOURCE_EXITING":
+            state.validators[source_index].exit_epoch = spec.Epoch(current_epoch + 1)
+        elif branch_target == "CONSOLIDATION_TARGET_EXITING":
+            state.validators[target_index].exit_epoch = spec.Epoch(current_epoch + 1)
+        elif branch_target == "CONSOLIDATION_SOURCE_NOT_ACTIVE_LONG_ENOUGH":
+            state.validators[source_index].activation_epoch = current_epoch
+        elif branch_target == "CONSOLIDATION_SOURCE_PENDING_WITHDRAWAL":
+            state.pending_partial_withdrawals.append(
+                spec.PendingPartialWithdrawal(
+                    validator_index=source_index,
+                    amount=spec.Gwei(1),
+                    withdrawable_epoch=spec.Epoch(current_epoch + 1),
+                )
+            )
+        elif branch_target == "CONSOLIDATION_SUCCESS":
+            return True
+        else:
+            raise ValueError(f"Unsupported consolidation branch target: {branch_target}")
+    return True
 
 
 def apply_consolidation_intent(

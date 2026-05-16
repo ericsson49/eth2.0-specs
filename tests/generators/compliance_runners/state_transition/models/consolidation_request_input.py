@@ -35,8 +35,31 @@ class ConsolidationChurnShape(Enum):
     CHURN_TOO_LOW = auto()
 
 
+class ConsolidationRequestBranchTarget(Enum):
+    CONSOLIDATION_SWITCH_SUCCESS = auto()
+    CONSOLIDATION_SWITCH_PUBKEY_MISSING = auto()
+    CONSOLIDATION_SWITCH_BAD_SOURCE_ADDRESS = auto()
+    CONSOLIDATION_SWITCH_SOURCE_INACTIVE = auto()
+    CONSOLIDATION_SWITCH_SOURCE_EXITING = auto()
+    CONSOLIDATION_SOURCE_EQUALS_TARGET = auto()
+    CONSOLIDATION_QUEUE_FULL = auto()
+    CONSOLIDATION_CHURN_TOO_LOW = auto()
+    CONSOLIDATION_SOURCE_MISSING = auto()
+    CONSOLIDATION_TARGET_MISSING = auto()
+    CONSOLIDATION_BAD_SOURCE_ADDRESS = auto()
+    CONSOLIDATION_TARGET_NOT_COMPOUNDING = auto()
+    CONSOLIDATION_SOURCE_INACTIVE = auto()
+    CONSOLIDATION_TARGET_INACTIVE = auto()
+    CONSOLIDATION_SOURCE_EXITING = auto()
+    CONSOLIDATION_TARGET_EXITING = auto()
+    CONSOLIDATION_SOURCE_NOT_ACTIVE_LONG_ENOUGH = auto()
+    CONSOLIDATION_SOURCE_PENDING_WITHDRAWAL = auto()
+    CONSOLIDATION_SUCCESS = auto()
+
+
 @dataclass
 class ConsolidationRequestInputProfile:
+    branch_target: ConsolidationRequestBranchTarget
     request_kind: ConsolidationRequestKind
     target_lookup_shape: TargetLookupShape
     source_activity_shape: SourceActivityShape
