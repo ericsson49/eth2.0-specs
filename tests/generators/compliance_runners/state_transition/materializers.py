@@ -1565,9 +1565,16 @@ def build_withdrawal_request(spec, state, validator_index: int, profile: dict[st
     )
 
 
+def withdrawal_branch_target(profile: dict[str, Any]) -> str | None:
+    return input_profile_shape(profile, "withdrawal_request_input", "branch_target")
+
+
 def apply_withdrawal_profile(spec, state, validator_index: int, withdrawal_request, profile) -> None:
     if "input_profiles" not in profile:
         return
+    if apply_withdrawal_branch_target(spec, state, validator_index, withdrawal_request, profile):
+        return
+
     if input_profile_shape(
         profile,
         "withdrawal_request_input",
@@ -1590,6 +1597,71 @@ def apply_withdrawal_profile(spec, state, validator_index: int, withdrawal_reque
                 withdrawable_epoch=spec.Epoch(spec.get_current_epoch(state) + 1),
             )
         )
+
+
+def apply_withdrawal_branch_target(
+    spec,
+    state,
+    validator_index: int,
+    withdrawal_request,
+    profile: dict[str, Any],
+) -> bool:
+    branch_target = withdrawal_branch_target(profile)
+    if branch_target is None:
+        return False
+
+    partial_request_targets = {
+        "WITHDRAWAL_QUEUE_FULL_PARTIAL",
+        "WITHDRAWAL_PARTIAL_CONDITIONS_NOT_MET",
+        "WITHDRAWAL_PARTIAL_SUCCESS",
+    }
+    is_partial_request = branch_target in partial_request_targets
+    prepare_withdrawal_source(spec, state, validator_index, compounding=is_partial_request)
+    withdrawal_request.source_address = SOURCE_ADDRESS
+    withdrawal_request.validator_pubkey = state.validators[validator_index].pubkey
+    withdrawal_request.amount = (
+        spec.Gwei(1) if is_partial_request else spec.FULL_EXIT_REQUEST_AMOUNT
+    )
+
+    current_epoch = spec.get_current_epoch(state)
+    validator = state.validators[validator_index]
+
+    if branch_target == "WITHDRAWAL_QUEUE_FULL_PARTIAL":
+        fill_pending_partial_withdrawals(spec, state, validator_index)
+    elif branch_target == "WITHDRAWAL_PUBKEY_MISSING":
+        withdrawal_request.validator_pubkey = b"\xff" * 48
+    elif branch_target == "WITHDRAWAL_BAD_SOURCE_ADDRESS":
+        withdrawal_request.source_address = invalid_source_address()
+    elif branch_target == "WITHDRAWAL_SOURCE_INACTIVE":
+        validator.activation_epoch = spec.FAR_FUTURE_EPOCH
+    elif branch_target == "WITHDRAWAL_SOURCE_EXITING":
+        validator.exit_epoch = spec.Epoch(current_epoch + 1)
+    elif branch_target == "WITHDRAWAL_NOT_ACTIVE_LONG_ENOUGH":
+        validator.activation_epoch = current_epoch
+    elif branch_target == "WITHDRAWAL_FULL_EXIT_PENDING_WITHDRAWAL":
+        state.pending_partial_withdrawals.append(
+            spec.PendingPartialWithdrawal(
+                validator_index=validator_index,
+                amount=spec.Gwei(1),
+                withdrawable_epoch=spec.Epoch(current_epoch + 1),
+            )
+        )
+    elif branch_target == "WITHDRAWAL_FULL_EXIT_SUCCESS":
+        return True
+    elif branch_target == "WITHDRAWAL_PARTIAL_CONDITIONS_NOT_MET":
+        set_eth1_withdrawal_credential_with_balance(
+            spec,
+            state,
+            validator_index,
+            effective_balance=spec.MIN_ACTIVATION_BALANCE,
+            balance=spec.MIN_ACTIVATION_BALANCE,
+            address=SOURCE_ADDRESS,
+        )
+    elif branch_target == "WITHDRAWAL_PARTIAL_SUCCESS":
+        return True
+    else:
+        raise ValueError(f"Unsupported withdrawal branch target: {branch_target}")
+    return True
 
 
 def apply_withdrawal_intent(spec, state, validator_index: int, withdrawal_request, profile) -> None:

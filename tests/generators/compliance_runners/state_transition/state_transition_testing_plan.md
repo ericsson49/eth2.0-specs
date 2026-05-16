@@ -230,6 +230,14 @@ us when the approximation or materializer needs to be refined. It also gives a
 clean path from semantic coverage items to input-profile constraints without
 embedding all of the branch recipes imperatively in materializers.
 
+The first concrete prototype applies this shape to `withdrawal_request`. Its
+input profile includes a `branch_target` dimension for the queue-full guard,
+pubkey/source-address early returns, validator activity checks, full-exit
+pending-withdrawal path, partial-withdrawal rejection path, and the two success
+paths. The materializer treats that dimension as authoritative and constructs a
+compatible pre-state plus request, then the normal runner validates the outcome
+and the coverage report verifies that the intended branch was reached.
+
 Both modes fit the same feedback loop:
 
 1. Choose generation mode and deterministic configuration.

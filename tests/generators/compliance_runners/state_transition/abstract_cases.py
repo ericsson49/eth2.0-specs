@@ -114,7 +114,7 @@ INPUT_PROFILE_DIMENSIONS = {
         "withdrawal_pubkey_relation",
     ),
     "voluntary_exit_input": ("exit_epoch_relation",),
-    "withdrawal_request_input": ("request_kind",),
+    "withdrawal_request_input": ("request_kind", "branch_target"),
     "consolidation_request_input": (
         "request_kind",
         "target_lookup_shape",
@@ -1044,7 +1044,7 @@ def input_intent_for_dimension(
     if profile_model == "voluntary_exit_input":
         return voluntary_exit_input_intent(value)
     if profile_model == "withdrawal_request_input":
-        return withdrawal_request_input_intent(value)
+        return withdrawal_request_input_intent(dimension, value)
     if profile_model == "consolidation_request_input":
         return consolidation_request_input_intent(dimension, value)
     if profile_model == "pending_deposits_input":
@@ -1163,12 +1163,21 @@ def voluntary_exit_input_intent(value: str) -> str | None:
     return None
 
 
-def withdrawal_request_input_intent(value: str) -> str | None:
-    if value == "FULL_EXIT_REQUEST":
-        return "success_full_exit"
-    if value == "PARTIAL_WITHDRAWAL_REQUEST":
-        return "success_partial_withdrawal"
-    return None
+def withdrawal_request_input_intent(dimension: str, value: str) -> str | None:
+    if dimension != "branch_target":
+        return None
+    return {
+        "WITHDRAWAL_QUEUE_FULL_PARTIAL": "queue_full",
+        "WITHDRAWAL_PUBKEY_MISSING": "pubkey_missing",
+        "WITHDRAWAL_BAD_SOURCE_ADDRESS": "bad_source_address",
+        "WITHDRAWAL_SOURCE_INACTIVE": "source_inactive",
+        "WITHDRAWAL_SOURCE_EXITING": "source_exiting",
+        "WITHDRAWAL_NOT_ACTIVE_LONG_ENOUGH": "not_active_long_enough",
+        "WITHDRAWAL_FULL_EXIT_PENDING_WITHDRAWAL": "full_exit_with_pending_withdrawal",
+        "WITHDRAWAL_FULL_EXIT_SUCCESS": "success_full_exit",
+        "WITHDRAWAL_PARTIAL_CONDITIONS_NOT_MET": "partial_conditions_not_met",
+        "WITHDRAWAL_PARTIAL_SUCCESS": "success_partial_withdrawal",
+    }.get(value)
 
 
 def consolidation_request_input_intent(dimension: str, value: str) -> str | None:
