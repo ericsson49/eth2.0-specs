@@ -251,6 +251,125 @@ MiniZinc fits this model directly: each aspect contributes constraints, the
 solver performs filtering and completion over the abstract model, and the
 materializer realizes a solved abstract witness as concrete SSZ data.
 
+### Coverage Objectives and Suite Optimization
+
+The ontology can define coverage goals directly. Instead of treating coverage
+as only a code-level property, we can define target spaces over aspect
+families and ask whether the suite covers them.
+
+For an aspect family `A`, an `n`-wise coverage criterion is:
+
+```text
+covered feasible n-wise aspect combinations
+/
+feasible n-wise aspect combinations
+```
+
+Feasibility is a modelling question. A combination is feasible when there
+exists at least one abstract or concrete witness that satisfies both the
+handler relation model and the aspect constraints:
+
+```text
+exists witness .
+  model(handler, witness) and combo(witness)
+```
+
+This gives input and output coverage the same shape:
+
+- **Input coverage** counts feasible input-aspect combinations that were
+  successfully instantiated as test vectors.
+- **Output coverage** counts feasible output, outcome, trace, or semantic
+  combinations that were actually observed after executing test vectors.
+- **Hybrid coverage** counts feasible combinations over input, output, trace,
+  and relational aspects, such as `queue_shape x branch_target` or
+  `credential_type x outcome`.
+
+The denominator is intentionally not every syntactic combination. It is the
+set of combinations that survive filtering against the model. The numerator is
+the subset for which we have either instantiated a witness, observed the target
+behavior, or both, depending on the coverage criterion.
+
+This turns test generation into a constrained optimization problem:
+
+```text
+given:
+  handler relation model
+  aspect vocabulary
+  coverage criterion
+  cost model
+
+find:
+  oracle-valid test vectors
+
+such that:
+  coverage >= target threshold
+
+minimizing:
+  suite size
+  generation time
+  execution time
+  materialization complexity
+```
+
+Different suite shapes can then be expressed as different optimization points:
+
+- **Core suites** aim for high target coverage with a minimal number of tests.
+- **Diversity suites** expand input and hybrid aspect coverage beyond the
+  minimal core.
+- **Stress or random suites** sample beyond the model's minimal witnesses to
+  search for implementation-specific bugs.
+- **Regression suites** pin selected witnesses that previously exposed a bug
+  or covered an important edge case.
+
+The intended evolution loop is:
+
+1. Define or refine the aspect vocabulary.
+2. Define coverage criteria over those aspects.
+3. Generate candidate witnesses with filtering and completion.
+4. Execute the generated tests and observe real coverage.
+5. Select or minimize the suite against the configured criteria.
+6. Add aspects, models, or reverse maps for uncovered feasible goals.
+
+This keeps the conceptual goal stable while allowing the implementation to
+change. We can improve the solver model, materializers, selection strategy, or
+mutation operators without changing what coverage means.
+
+### Monadic Strategy Layer
+
+The strategy layer should let us experiment at the semantic and ontological
+level before materializing concrete Python state. A strategy is a small
+symbolic program that composes finite choices, constraints, coverage
+obligations, and annotations:
+
+```text
+choose handler/aspects
+  -> cover intended aspect combination
+  -> require symbolic feasibility
+  -> complete later with a solver or model
+  -> materialize only selected witnesses
+```
+
+The initial implementation lives in `tests/generators/compliance_runners/gen_base`.
+It provides a small `Gen` monad with:
+
+- `choose`: finite nondeterministic choice
+- `require`: symbolic constraint accumulation
+- `cover`: semantic coverage-goal accumulation
+- `n_wise_strategy`: reusable `n`-wise aspect-combination strategy
+- `enumerate_strategy`: a dry-run interpreter for finite strategies
+
+State-transition code can then adapt existing profile dimensions into generic
+aspect dimensions. The preview command:
+
+```bash
+uv run python -m tests.generators.compliance_runners.state_transition.preview_strategy withdrawal_request --order 2
+```
+
+reports symbolic and completable input-profile goals without producing SSZ
+test vectors. Future interpreters can map the same strategy program to
+MiniZinc, SAT, SMT, approximate uniform sampling, prioritization, or suite
+minimization.
+
 ## Generation Modes
 
 This gives two complementary generation modes.
