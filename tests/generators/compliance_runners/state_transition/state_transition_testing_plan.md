@@ -39,20 +39,55 @@ The generator has four layers:
    - Campaign summaries aggregate multiple suites under one ontology-level
      coverage report.
 
-## Ontological Lens
+## Relational Ontological Lens
 
 The state-transition functions under test have two basic execution shapes:
 
 - Epoch-processing handlers: `State -> State`
 - Operation handlers: `(State, Input) -> State`
 
-The test-generation ontology describes those executions with a small set of
-related concepts:
+Conceptually, each handler defines a relation:
 
-- **Profile**: an abstract state aspect. A profile is a projection of the full
-  `BeaconState` into facts relevant to a behavior area, such as validator
-  lifecycle status, balance relations, credentials, queue state, participation
-  state, or sync committee boundary state.
+```text
+HandlerRelation ⊆ PreState × HandlerInput × PostState × Outcome × Trace
+```
+
+For epoch-processing handlers, `HandlerInput` is empty. Generated tests sample
+or steer this relation, materialize a concrete `PreState` plus optional
+operation input, execute the pyspec, and observe the resulting `PostState`,
+`Outcome`, and coverage trace.
+
+The central ontology concept is an **aspect**: a named predicate or projection
+over the handler relation. Aspects are not required to form a disjoint
+decomposition of the state. They are overlapping lenses over the relation and
+can describe input shape, output effect, execution trace, or input-output
+interaction.
+
+Useful aspect categories:
+
+- **Input aspects** constrain `PreState` or `HandlerInput`.
+  Examples: validator lifecycle, queue fullness, request kind, signature shape,
+  epoch boundary, participation shape.
+- **Output aspects** describe `PostState` or `Outcome`.
+  Examples: state changed, no state change, assertion failure, validator exit
+  initiated, pending queue appended.
+- **Trace aspects** describe execution path or coverage.
+  Examples: target function reached, statement or branch covered, helper path
+  used.
+- **Relational aspects** connect input, output, and trace.
+  Examples: inactive withdrawal source leaves state unchanged, partial
+  withdrawal success appends a pending withdrawal, queue-full request returns
+  before lookup.
+- **Steering aspects** are relational or output/trace aspects used backward to
+  generate inputs. Current `branch_target` dimensions are steering aspects.
+
+The current code still uses the word `profile` for many input-side aspect
+models. Conceptually, a profile model is an aspect model with dimensions and
+values. Some dimensions describe input diversity, while `branch_target`
+dimensions name desired relational or trace slices.
+
+Other ontology concepts fit inside this relational view:
+
 - **Stage**: a behavioral aspect or protocol area. A stage groups handlers that
   together express one part of the state transition, such as validator
   lifecycle, participation/finality, rotating resets, or committee/sync
@@ -60,18 +95,19 @@ related concepts:
 - **Handler**: the concrete spec function under test. Each generated case calls
   one handler, either directly as an epoch-processing function or with an
   operation input.
-- **Intent**: a semantic behavior class for a handler. Intents describe the
-  behavior the test is trying to exercise, such as `queue_full`,
-  `bad_signature`, `success_partial_withdrawal`, or `period_boundary`.
-- **Outcome**: the coarse effect class of executing the handler. Current
+- **Intent**: a semantic behavior class for a handler. Intents are named
+  relational aspects such as `queue_full`, `bad_signature`,
+  `success_partial_withdrawal`, or `period_boundary`.
+- **Outcome**: the coarse effect aspect of executing the handler. Current
   outcomes are `changed`, `no_change`, and `assertion_failure`.
 
 These concepts answer different questions:
 
-- Profile: what abstract state aspect is being materialized?
+- Aspect/profile: which abstract lens over the relation is being constrained
+  or observed?
 - Stage: which protocol behavior area owns this handler?
 - Handler: which spec function is executed?
-- Intent: which semantic behavior class is targeted?
+- Intent: which semantic relation slice is targeted?
 - Outcome: what high-level effect is expected or observed?
 
 An outcome can be viewed as effect-shaped semantic information, but it is kept
@@ -88,13 +124,13 @@ time, materializers and profiles can expose more semantic dimensions so
 coverage can move from only `handler x intent` toward richer pairs or sampled
 triples such as `handler x credential_type x outcome`.
 
-Another useful view is to separate input-side knobs from output-side coverage
+Another useful view is to separate input-side aspects from output-side coverage
 items.
 
 Input-side concepts are the things generation can choose or construct before
 execution:
 
-- profiles and profile dimensions
+- aspects, profile models, and dimensions
 - operation input shapes
 - selected handler and stage context
 - materializer parameters
@@ -117,22 +153,103 @@ Interaction coverage connects the two, for example `credential_type x outcome`,
 This gives models three related roles:
 
 1. **Define input coverage.** A model solution corresponds to an abstract test
-   case or profile, and therefore to a point in an input coverage space.
-2. **Approximate the input-output relation.** A model can estimate which input
-   aspects are likely to trigger desired intents, outcomes, or branches.
+   case or aspect assignment, and therefore to a point in an input coverage
+   space.
+2. **Approximate the handler relation.** A model can estimate which input
+   aspects are likely to trigger desired output, trace, relational, or semantic
+   aspects.
 3. **Guide input-output coverage.** Coverage feedback can identify missing
-   input/output combinations, then models and materializers can try to produce
-   inputs that cover them.
+   aspect combinations, then models and materializers can try to produce inputs
+   that cover them.
 
 Intents are especially related to this inverse problem. An intent names a
 desired behavior, then generation asks which state and input aspects should be
-constructed to trigger it. Today that inverse map is mostly hand-coded in
-materializers: `queue_full` fills a queue, `source_inactive` changes activation
-status, `period_boundary` chooses a boundary slot, and `bad_signature` corrupts
-a signature. Future models can make this more declarative by constraining or
-scoring profiles that are expected to trigger the desired behavior. When the
-model is approximate, the pyspec runner remains the oracle and coverage
-feedback tells us whether the suggested inputs actually reached the target.
+constructed to trigger it. Today that inverse map is represented by
+`branch_target` dimensions plus materializer recipes: `queue_full` fills a
+queue, `source_inactive` changes activation status, `period_boundary` chooses a
+boundary slot, and `bad_signature` corrupts a signature. Future models can make
+this more declarative by constraining or scoring aspect assignments that are
+expected to trigger the desired behavior. When the model is approximate, the
+pyspec runner remains the oracle and coverage feedback tells us whether the
+suggested inputs actually reached the target.
+
+### Forward, Backward, and Hybrid Generation
+
+With the relational lens, generation modes differ mostly by which aspects are
+chosen first.
+
+**Forward generation** chooses input aspects first:
+
+```text
+input aspects -> materialized PreState/Input -> execute -> observe output/trace aspects
+```
+
+This mode is useful for input diversity and implementation bug hunting. It asks
+whether the suite covers the abstract state and operation-input space.
+
+**Backward generation** chooses output, trace, or relational aspects first:
+
+```text
+desired output/trace/relational aspect
+  -> reverse-map constraints over input aspects
+  -> materialized PreState/Input
+  -> execute and verify
+```
+
+This mode is useful for coverage steering. The current `branch_target`
+dimensions are the concrete backward-generation mechanism.
+
+**Hybrid generation** composes steering aspects with input-diversity aspects:
+
+```text
+branch_target x queue_shape
+intent x validator_lifecycle
+target path x signature shape
+```
+
+This is what the pairwise input-profile suite does. It samples both the desired
+relation slice and additional input aspects, filters incompatible combinations,
+completes partial assignments, materializes them, and lets the pyspec validate
+the result.
+
+### Filtering and Completion
+
+Filtering and completion are relational operations, not ad-hoc generator
+details.
+
+**Filtering** asks whether a partial aspect assignment denotes a non-empty
+slice of the approximate handler relation:
+
+```text
+A1 = x, A2 = y
+is this compatible?
+```
+
+Incompatible combinations are dropped before materialization.
+
+**Completion** extends a compatible partial assignment into a fuller abstract
+witness:
+
+```text
+A1 = x, A2 = y
+choose A3 = z, A4 = w, ...
+so the assignment can be materialized
+```
+
+The resulting pipeline is:
+
+```text
+sample partial aspect constraints
+  -> filter incompatible combinations
+  -> complete to an abstract witness
+  -> materialize concrete PreState/Input
+  -> execute handler
+  -> observe PostState/Outcome/Trace aspects
+```
+
+MiniZinc fits this model directly: each aspect contributes constraints, the
+solver performs filtering and completion over the abstract model, and the
+materializer realizes a solved abstract witness as concrete SSZ data.
 
 ## Generation Modes
 
