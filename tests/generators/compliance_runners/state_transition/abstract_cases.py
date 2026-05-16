@@ -26,6 +26,7 @@ PROFILE_MODELS = {
     "consolidation_request_input": "consolidation_request_input.py",
     "pending_deposits_input": "pending_deposits_input.py",
     "pending_consolidations_input": "pending_consolidations_input.py",
+    "sync_aggregate_input": "sync_aggregate_input.py",
     "queue": "queue.py",
     "epoch_boundary": "epoch_boundary.py",
     "participation": "participation.py",
@@ -93,27 +94,31 @@ INPUT_PROFILE_DIMENSIONS = {
         "source_target_relation",
     ),
     "proposer_slashing_input": (
+        "branch_target",
         "header_relation",
         "proposer_relation",
         "proposer_status",
     ),
     "attester_slashing_input": (
+        "branch_target",
         "attester_overlap",
         "attestation_data_relation",
         "attester_status",
     ),
     "attestation_input": (
+        "branch_target",
         "slot_relation",
         "target_epoch_relation",
         "committee_index_shape",
         "aggregation_shape",
     ),
-    "deposit_input": ("recipient_shape",),
+    "deposit_input": ("branch_target", "recipient_shape"),
     "bls_to_execution_change_input": (
+        "branch_target",
         "credential_shape",
         "withdrawal_pubkey_relation",
     ),
-    "voluntary_exit_input": ("exit_epoch_relation",),
+    "voluntary_exit_input": ("branch_target", "exit_epoch_relation"),
     "withdrawal_request_input": ("request_kind", "branch_target"),
     "consolidation_request_input": (
         "branch_target",
@@ -135,6 +140,7 @@ INPUT_PROFILE_DIMENSIONS = {
         "balance_shape",
         "queue_shape",
     ),
+    "sync_aggregate_input": ("branch_target",),
     "queue": (
         "pending_partial_withdrawals",
         "pending_consolidations",
@@ -177,7 +183,7 @@ HANDLER_INPUT_PROFILE_MODELS = {
     "eth1_data_reset": ("epoch_boundary",),
     "historical_summaries_update": ("epoch_boundary",),
     "sync_committee_updates": ("epoch_boundary",),
-    "sync_aggregate": ("operation_input", "participation"),
+    "sync_aggregate": ("sync_aggregate_input", "operation_input", "participation"),
 }
 PROFILE_DRIVEN_INPUT_HANDLERS = frozenset({
     "proposer_slashing",
@@ -1039,11 +1045,11 @@ def input_intent_for_dimension(
     if profile_model == "attestation_input":
         return attestation_input_intent(dimension, value)
     if profile_model == "deposit_input":
-        return deposit_input_intent(value)
+        return deposit_input_intent(dimension, value)
     if profile_model == "bls_to_execution_change_input":
         return bls_to_execution_change_input_intent(dimension, value)
     if profile_model == "voluntary_exit_input":
-        return voluntary_exit_input_intent(value)
+        return voluntary_exit_input_intent(dimension, value)
     if profile_model == "withdrawal_request_input":
         return withdrawal_request_input_intent(dimension, value)
     if profile_model == "consolidation_request_input":
@@ -1052,6 +1058,8 @@ def input_intent_for_dimension(
         return pending_deposits_input_intent(dimension, value)
     if profile_model == "pending_consolidations_input":
         return pending_consolidations_input_intent(dimension, value)
+    if profile_model == "sync_aggregate_input":
+        return sync_aggregate_input_intent(dimension, value)
     if profile_model == "queue":
         return queue_input_intent(handler_name, dimension, value)
     if profile_model == "epoch_boundary":
@@ -1066,18 +1074,10 @@ def input_intent_for_dimension(
 def operation_input_intent(handler_name: str, dimension: str, value: str) -> str | None:
     if dimension == "signature_shape" and value == "SIGNATURE_INVALID":
         return {
-            "proposer_slashing": "bad_signature",
-            "attester_slashing": "bad_signature",
-            "attestation": "bad_signature",
-            "deposit": "invalid_signature",
-            "bls_to_execution_change": "bad_signature",
             "sync_aggregate": "bad_signature",
         }.get(handler_name)
-    if dimension == "proof_shape" and value == "PROOF_INVALID" and handler_name == "deposit":
-        return "invalid_proof"
     if dimension == "lookup_shape" and value == "LOOKUP_MISSING":
         return {
-            "bls_to_execution_change": "out_of_range",
             "withdrawal_request": "pubkey_missing",
         }.get(handler_name)
     if dimension == "source_address_shape" and value == "SOURCE_ADDRESS_INVALID":
@@ -1093,71 +1093,76 @@ def operation_input_intent(handler_name: str, dimension: str, value: str) -> str
 
 
 def proposer_slashing_input_intent(dimension: str, value: str) -> str | None:
-    if dimension == "header_relation" and value == "SAME_HEADER":
-        return "same_header"
-    if dimension == "proposer_relation" and value == "DIFFERENT_PROPOSER":
-        return "proposer_mismatch"
-    if dimension == "proposer_status" and value == "PROPOSER_ALREADY_SLASHED":
-        return "already_slashed"
-    if (
-        dimension == "header_relation"
-        and value == "DIFFERENT_HEADERS"
-    ):
-        return "success"
+    if dimension == "branch_target":
+        return {
+            "PROPOSER_SLASHING_SUCCESS": "success",
+            "PROPOSER_SLASHING_SAME_HEADER": "same_header",
+            "PROPOSER_SLASHING_PROPOSER_MISMATCH": "proposer_mismatch",
+            "PROPOSER_SLASHING_ALREADY_SLASHED": "already_slashed",
+            "PROPOSER_SLASHING_BAD_SIGNATURE": "bad_signature",
+        }.get(value)
     return None
 
 
 def attester_slashing_input_intent(dimension: str, value: str) -> str | None:
-    if dimension == "attester_overlap" and value == "DISJOINT":
-        return "no_overlap"
-    if dimension == "attestation_data_relation" and value == "ATTESTATION_DATA_SAME":
-        return "not_slashable_data"
-    if dimension == "attester_status" and value == "ATTESTER_ALREADY_SLASHED":
-        return "already_slashed"
-    if dimension == "attestation_data_relation" and value == "ATTESTATION_DATA_SLASHABLE":
-        return "success"
+    if dimension == "branch_target":
+        return {
+            "ATTESTER_SLASHING_SUCCESS": "success",
+            "ATTESTER_SLASHING_NOT_SLASHABLE_DATA": "not_slashable_data",
+            "ATTESTER_SLASHING_NO_OVERLAP": "no_overlap",
+            "ATTESTER_SLASHING_ALREADY_SLASHED": "already_slashed",
+            "ATTESTER_SLASHING_BAD_SIGNATURE": "bad_signature",
+        }.get(value)
     return None
 
 
 def attestation_input_intent(dimension: str, value: str) -> str | None:
-    if dimension == "slot_relation" and value == "PREVIOUS_EPOCH":
-        return "previous_epoch_success"
-    if dimension == "slot_relation" and value == "FUTURE_SLOT":
-        return "future_slot"
-    if dimension == "slot_relation" and value == "CURRENT_EPOCH":
-        return "success"
-    if dimension == "target_epoch_relation" and value == "WRONG_TARGET_EPOCH":
-        return "wrong_target_epoch"
-    if dimension == "committee_index_shape" and value == "COMMITTEE_BAD_INDEX":
-        return "bad_committee_index"
-    if dimension == "aggregation_shape" and value == "AGGREGATION_EMPTY":
-        return "empty_aggregation"
+    if dimension == "branch_target":
+        return {
+            "ATTESTATION_SUCCESS": "success",
+            "ATTESTATION_PREVIOUS_EPOCH_SUCCESS": "previous_epoch_success",
+            "ATTESTATION_FUTURE_SLOT": "future_slot",
+            "ATTESTATION_WRONG_TARGET_EPOCH": "wrong_target_epoch",
+            "ATTESTATION_BAD_COMMITTEE_INDEX": "bad_committee_index",
+            "ATTESTATION_EMPTY_AGGREGATION": "empty_aggregation",
+            "ATTESTATION_BAD_SIGNATURE": "bad_signature",
+        }.get(value)
     return None
 
 
-def deposit_input_intent(value: str) -> str | None:
-    if value == "NEW_VALIDATOR":
-        return "new_validator"
-    if value == "TOP_UP_EXISTING_VALIDATOR":
-        return "top_up_existing_validator"
+def deposit_input_intent(dimension: str, value: str) -> str | None:
+    if dimension == "branch_target":
+        return {
+            "DEPOSIT_NEW_VALIDATOR": "new_validator",
+            "DEPOSIT_TOP_UP_EXISTING_VALIDATOR": "top_up_existing_validator",
+            "DEPOSIT_INVALID_PROOF": "invalid_proof",
+            "DEPOSIT_INVALID_SIGNATURE": "invalid_signature",
+        }.get(value)
     return None
 
 
 def bls_to_execution_change_input_intent(dimension: str, value: str) -> str | None:
-    if dimension == "credential_shape" and value == "EXECUTION_CREDENTIALS":
-        return "not_bls_credentials"
-    if dimension == "withdrawal_pubkey_relation" and value == "PUBKEY_MISMATCH":
-        return "pubkey_mismatch"
-    if dimension == "credential_shape" and value == "BLS_CREDENTIALS":
-        return "success"
+    if dimension == "branch_target":
+        return {
+            "BLS_TO_EXECUTION_SUCCESS": "success",
+            "BLS_TO_EXECUTION_OUT_OF_RANGE": "out_of_range",
+            "BLS_TO_EXECUTION_NOT_BLS_CREDENTIALS": "not_bls_credentials",
+            "BLS_TO_EXECUTION_PUBKEY_MISMATCH": "pubkey_mismatch",
+            "BLS_TO_EXECUTION_BAD_SIGNATURE": "bad_signature",
+        }.get(value)
     return None
 
 
-def voluntary_exit_input_intent(value: str) -> str | None:
-    if value == "EXIT_EPOCH_FUTURE":
-        return "future_epoch"
-    if value == "EXIT_EPOCH_CURRENT":
-        return "success"
+def voluntary_exit_input_intent(dimension: str, value: str) -> str | None:
+    if dimension == "branch_target":
+        return {
+            "VOLUNTARY_EXIT_SUCCESS": "success",
+            "VOLUNTARY_EXIT_INACTIVE": "inactive",
+            "VOLUNTARY_EXIT_ALREADY_EXITED": "already_exited",
+            "VOLUNTARY_EXIT_FUTURE_EPOCH": "future_epoch",
+            "VOLUNTARY_EXIT_NOT_ACTIVE_LONG_ENOUGH": "not_active_long_enough",
+            "VOLUNTARY_EXIT_PENDING_WITHDRAWAL": "pending_withdrawal",
+        }.get(value)
     return None
 
 
@@ -1235,6 +1240,18 @@ def pending_consolidations_input_intent(dimension: str, value: str) -> str | Non
         return "blocked_after_processed"
     if dimension == "source_shape" and value == "SOURCE_WITHDRAWABLE":
         return "success"
+    return None
+
+
+def sync_aggregate_input_intent(dimension: str, value: str) -> str | None:
+    if dimension == "branch_target":
+        return {
+            "SYNC_AGGREGATE_ALL_PARTICIPATE": "all_participate",
+            "SYNC_AGGREGATE_MAJORITY_PARTICIPATE": "majority_participate",
+            "SYNC_AGGREGATE_MINORITY_PARTICIPATE": "minority_participate",
+            "SYNC_AGGREGATE_NONE_PARTICIPATE": "none_participate",
+            "SYNC_AGGREGATE_BAD_SIGNATURE": "bad_signature",
+        }.get(value)
     return None
 
 

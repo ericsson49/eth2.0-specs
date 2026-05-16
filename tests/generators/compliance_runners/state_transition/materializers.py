@@ -1038,6 +1038,15 @@ def prepare_state_for_proposer_slashing(spec, state, profile: dict[str, Any]):
         signed_2=True,
     )
     if "input_profiles" in profile:
+        if input_profile_shape(profile, "proposer_slashing_input", "branch_target") is not None:
+            apply_proposer_slashing_intent(
+                spec,
+                state,
+                proposer_index,
+                proposer_slashing,
+                profile,
+            )
+            return proposer_slashing
         proposer_profile = profile.get("input_profiles", {}).get("proposer_slashing_input", {})
         if proposer_profile.get("header_relation") == "SAME_HEADER":
             proposer_slashing.signed_header_2.message = proposer_slashing.signed_header_1.message.copy()
@@ -1069,6 +1078,31 @@ def prepare_state_for_proposer_slashing(spec, state, profile: dict[str, Any]):
     return proposer_slashing
 
 
+def apply_proposer_slashing_intent(
+    spec,
+    state,
+    proposer_index: int,
+    proposer_slashing,
+    profile: dict[str, Any],
+) -> None:
+    intent = profile.get("guide_intent")
+    if intent in (None, "success"):
+        return
+    if intent == "same_header":
+        proposer_slashing.signed_header_2.message = proposer_slashing.signed_header_1.message.copy()
+    elif intent == "proposer_mismatch":
+        proposer_slashing.signed_header_2.message.proposer_index = spec.ValidatorIndex(
+            proposer_index + 1
+        )
+    elif intent == "already_slashed":
+        state.validators[proposer_index].slashed = True
+    elif intent == "bad_signature":
+        profile["bls_setting"] = 1
+        proposer_slashing.signed_header_2.signature = spec.BLSSignature(b"\x42" * 96)
+    else:
+        raise ValueError(f"Unsupported proposer slashing guide intent: {intent}")
+
+
 def prepare_state_for_attester_slashing(spec, state, profile: dict[str, Any]):
     transition_to(spec, state, spec.compute_start_slot_at_epoch(spec.Epoch(2)))
     prepare_slashable_validator(spec, state, VALIDATOR_INDEX)
@@ -1091,6 +1125,9 @@ def prepare_state_for_attester_slashing(spec, state, profile: dict[str, Any]):
         signed_2=True,
     )
     if "input_profiles" in profile:
+        if input_profile_shape(profile, "attester_slashing_input", "branch_target") is not None:
+            apply_attester_slashing_intent(spec, state, attester_slashing, profile)
+            return attester_slashing
         if attester_profile.get("attestation_data_relation") == "ATTESTATION_DATA_SAME":
             attester_slashing.attestation_2.data = attester_slashing.attestation_1.data.copy()
         if attester_profile.get("attester_status") == "ATTESTER_ALREADY_SLASHED":
@@ -1111,6 +1148,21 @@ def prepare_state_for_attester_slashing(spec, state, profile: dict[str, Any]):
         attester_slashing.attestation_2.signature = spec.BLSSignature(b"\x42" * 96)
         return attester_slashing
     raise ValueError(f"Unsupported attester slashing guide intent: {intent}")
+
+
+def apply_attester_slashing_intent(spec, state, attester_slashing, profile: dict[str, Any]) -> None:
+    intent = profile.get("guide_intent")
+    if intent in (None, "success", "no_overlap"):
+        return
+    if intent == "not_slashable_data":
+        attester_slashing.attestation_2.data = attester_slashing.attestation_1.data.copy()
+    elif intent == "already_slashed":
+        state.validators[VALIDATOR_INDEX].slashed = True
+    elif intent == "bad_signature":
+        profile["bls_setting"] = 1
+        attester_slashing.attestation_2.signature = spec.BLSSignature(b"\x42" * 96)
+    else:
+        raise ValueError(f"Unsupported attester slashing guide intent: {intent}")
 
 
 def prepare_state_for_attestation(spec, state, profile: dict[str, Any]):
@@ -1134,6 +1186,9 @@ def prepare_state_for_attestation(spec, state, profile: dict[str, Any]):
         signed=True,
     )
     if "input_profiles" in profile:
+        if input_profile_shape(profile, "attestation_input", "branch_target") is not None:
+            apply_attestation_intent(spec, state, attestation, profile)
+            return attestation
         if attestation_profile.get("slot_relation") == "FUTURE_SLOT":
             attestation.data.slot = state.slot
         if attestation_profile.get("target_epoch_relation") == "WRONG_TARGET_EPOCH":
@@ -1172,6 +1227,29 @@ def prepare_state_for_attestation(spec, state, profile: dict[str, Any]):
     return attestation
 
 
+def apply_attestation_intent(spec, state, attestation, profile: dict[str, Any]) -> None:
+    intent = profile.get("guide_intent")
+    if intent in (None, "success", "previous_epoch_success"):
+        return
+    if intent == "future_slot":
+        attestation.data.slot = state.slot
+    elif intent == "wrong_target_epoch":
+        attestation.data.target.epoch = spec.Epoch(attestation.data.target.epoch + 1)
+    elif intent == "bad_committee_index":
+        attestation.committee_bits = spec.Bitvector[spec.MAX_COMMITTEES_PER_SLOT](
+            [False] * spec.MAX_COMMITTEES_PER_SLOT
+        )
+        attestation.committee_bits[spec.MAX_COMMITTEES_PER_SLOT - 1] = True
+    elif intent == "empty_aggregation":
+        for index in range(len(attestation.aggregation_bits)):
+            attestation.aggregation_bits[index] = False
+    elif intent == "bad_signature":
+        profile["bls_setting"] = 1
+        attestation.signature = spec.BLSSignature(b"\x42" * 96)
+    else:
+        raise ValueError(f"Unsupported attestation guide intent: {intent}")
+
+
 def prepare_slashable_validator(spec, state, validator_index: int) -> None:
     validator = state.validators[validator_index]
     validator.slashed = False
@@ -1186,6 +1264,8 @@ def prepare_slashable_validator(spec, state, validator_index: int) -> None:
 def prepare_state_for_deposit(spec, state, profile: dict[str, Any]):
     state.pending_deposits = spec.List[spec.PendingDeposit, spec.PENDING_DEPOSITS_LIMIT]()
     if "input_profiles" in profile:
+        if input_profile_shape(profile, "deposit_input", "branch_target") is not None:
+            return build_deposit_for_intent(spec, state, profile)
         validator_index = len(state.validators)
         if input_profile_shape(
             profile,
@@ -1208,6 +1288,12 @@ def prepare_state_for_deposit(spec, state, profile: dict[str, Any]):
         return deposit
 
     intent = profile.get("guide_intent")
+    return build_deposit_for_intent(spec, state, profile, intent)
+
+
+def build_deposit_for_intent(spec, state, profile: dict[str, Any], intent: str | None = None):
+    if intent is None:
+        intent = profile.get("guide_intent")
     if intent in (None, "new_validator"):
         return prepare_state_and_deposit(
             spec,
@@ -1256,6 +1342,14 @@ def prepare_state_for_bls_to_execution_change(spec, state, profile: dict[str, An
     validator = state.validators[validator_index]
     validator.withdrawal_credentials = spec.BLS_WITHDRAWAL_PREFIX + spec.hash(withdrawal_pubkey)[1:]
     if "input_profiles" in profile:
+        if input_profile_shape(profile, "bls_to_execution_change_input", "branch_target") is not None:
+            return build_bls_to_execution_change_for_intent(
+                spec,
+                state,
+                validator_index,
+                withdrawal_pubkey,
+                profile,
+            )
         if input_profile_shape(
             profile,
             "bls_to_execution_change_input",
@@ -1284,6 +1378,62 @@ def prepare_state_for_bls_to_execution_change(spec, state, profile: dict[str, An
             signed_address_change.signature = spec.BLSSignature(b"\x42" * 96)
         return signed_address_change
 
+    intent = profile.get("guide_intent")
+    if intent in (None, "success"):
+        return get_signed_address_change(
+            spec,
+            state,
+            validator_index=validator_index,
+            withdrawal_pubkey=withdrawal_pubkey,
+            to_execution_address=SOURCE_ADDRESS,
+        )
+    if intent == "out_of_range":
+        return get_signed_address_change(
+            spec,
+            state,
+            validator_index=len(state.validators),
+            withdrawal_pubkey=withdrawal_pubkey,
+            to_execution_address=SOURCE_ADDRESS,
+        )
+    if intent == "not_bls_credentials":
+        validator.withdrawal_credentials = spec.ETH1_ADDRESS_WITHDRAWAL_PREFIX + b"\x00" * 11 + SOURCE_ADDRESS
+        return get_signed_address_change(
+            spec,
+            state,
+            validator_index=validator_index,
+            withdrawal_pubkey=withdrawal_pubkey,
+            to_execution_address=SOURCE_ADDRESS,
+        )
+    if intent == "pubkey_mismatch":
+        return get_signed_address_change(
+            spec,
+            state,
+            validator_index=validator_index,
+            withdrawal_pubkey=pubkeys[-2 - validator_index],
+            to_execution_address=SOURCE_ADDRESS,
+        )
+    if intent == "bad_signature":
+        profile["bls_setting"] = 1
+        signed_address_change = get_signed_address_change(
+            spec,
+            state,
+            validator_index=validator_index,
+            withdrawal_pubkey=withdrawal_pubkey,
+            to_execution_address=SOURCE_ADDRESS,
+        )
+        signed_address_change.signature = spec.BLSSignature(b"\x42" * 96)
+        return signed_address_change
+    raise ValueError(f"Unsupported BLS to execution change guide intent: {intent}")
+
+
+def build_bls_to_execution_change_for_intent(
+    spec,
+    state,
+    validator_index: int,
+    withdrawal_pubkey,
+    profile: dict[str, Any],
+):
+    validator = state.validators[validator_index]
     intent = profile.get("guide_intent")
     if intent in (None, "success"):
         return get_signed_address_change(
@@ -1405,6 +1555,8 @@ def prepare_state_for_voluntary_exit(
         if not has_input_profile_constraints(profile, "validator_state"):
             prepare_withdrawal_source(spec, state, validator_index, compounding=False)
         apply_queue_profile_for_validator(spec, state, validator_index, profile)
+        if input_profile_shape(profile, "voluntary_exit_input", "branch_target") is not None:
+            apply_voluntary_exit_intent(spec, state, validator_index, profile)
         return
 
     current_epoch = spec.Epoch(max(2, spec.config.SHARD_COMMITTEE_PERIOD + 1))
@@ -1428,6 +1580,33 @@ def prepare_state_for_voluntary_exit(
         address=SOURCE_ADDRESS,
     )
 
+    intent = profile.get("guide_intent")
+    if intent in (None, "success", "future_epoch"):
+        return
+    if intent == "inactive":
+        validator.activation_epoch = spec.FAR_FUTURE_EPOCH
+    elif intent == "already_exited":
+        validator.exit_epoch = spec.Epoch(current_epoch + 1)
+    elif intent == "not_active_long_enough":
+        validator.activation_epoch = current_epoch
+    elif intent == "pending_withdrawal":
+        state.pending_partial_withdrawals.append(
+            spec.PendingPartialWithdrawal(
+                validator_index=validator_index,
+                amount=spec.Gwei(1),
+                withdrawable_epoch=spec.Epoch(current_epoch + 1),
+            )
+        )
+    else:
+        raise ValueError(f"Unsupported voluntary exit guide intent: {intent}")
+
+
+def apply_voluntary_exit_intent(spec, state, validator_index: int, profile: dict[str, Any]) -> None:
+    current_epoch = spec.get_current_epoch(state)
+    validator = state.validators[validator_index]
+    state.pending_partial_withdrawals = spec.List[
+        spec.PendingPartialWithdrawal, spec.PENDING_PARTIAL_WITHDRAWALS_LIMIT
+    ]()
     intent = profile.get("guide_intent")
     if intent in (None, "success", "future_epoch"):
         return
@@ -3097,7 +3276,18 @@ def prepare_state_for_sync_aggregate(spec, state, profile: dict[str, Any]):
     committee_size = len(committee_indices)
     intent = profile.get("guide_intent")
 
-    if profile.get("profile_driven"):
+    if input_profile_shape(profile, "sync_aggregate_input", "branch_target") is not None:
+        if intent in (None, "all_participate"):
+            participant_count = committee_size
+        elif intent == "majority_participate":
+            participant_count = committee_size // 2 + 1
+        elif intent == "minority_participate":
+            participant_count = max(1, committee_size // 2)
+        elif intent in ("none_participate", "bad_signature"):
+            participant_count = 0 if intent == "none_participate" else committee_size
+        else:
+            raise ValueError(f"Unsupported sync aggregate guide intent: {intent}")
+    elif profile.get("profile_driven"):
         participant_count = sync_participant_count_from_profile(profile, committee_size)
     elif intent in (None, "all_participate"):
         participant_count = committee_size
