@@ -762,6 +762,13 @@ The suite config is the reviewed source of truth. The goal ledger emitted by
 `--goals-output` is a compiled strategy plan used for reproducibility,
 reporting, and materialization-funnel debugging.
 
+`run_suite` and `run_campaign` write the compiled ledger to
+`<output>/strategy_goals.json` during generation and reuse it during summary
+when it exists. Use `--goals-output` to override the path, or
+`--expected-goals` to compare a generated suite against an existing frozen
+ledger. Use `--refresh-goals` to rebuild the cached ledger after changing
+suite formulas without regenerating vectors.
+
 For deeper diagnostics, `summarize_suite` remains available. It reports stage
 shape, outcome counts, detailed aspect interactions, ontology fit, and semantic
 outcome mismatches.

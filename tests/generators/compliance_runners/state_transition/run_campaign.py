@@ -4,7 +4,12 @@ import argparse
 import shutil
 from pathlib import Path
 
-from .lean_report import expected_goals_from_generation_configs, format_lean_report
+from .lean_report import (
+    format_lean_report,
+    goal_ledger_path,
+    load_expected_goals,
+    load_or_create_expected_goals,
+)
 from .run_suite import generate_from_config, measure_from_config, validate_suites
 from .suite_config import (
     default_campaign_output_dir,
@@ -62,6 +67,24 @@ def main() -> None:
         type=Path,
         help="Optional file to write the campaign health summary to.",
     )
+    parser.add_argument(
+        "--goals-output",
+        type=Path,
+        help=(
+            "Optional compiled strategy-goal ledger path. "
+            "Defaults to <output>/strategy_goals.json."
+        ),
+    )
+    parser.add_argument(
+        "--expected-goals",
+        type=Path,
+        help="Existing frozen strategy-goal ledger to use for summary.",
+    )
+    parser.add_argument(
+        "--refresh-goals",
+        action="store_true",
+        help="Recompute the compiled strategy-goal ledger from the campaign suites.",
+    )
     args = parser.parse_args()
 
     campaign_config_path = resolve_campaign_config_path(args.campaign)
@@ -69,6 +92,9 @@ def main() -> None:
     output_root = args.output or default_campaign_output_dir(campaign_config, campaign_config_path)
     suite_runs = resolve_campaign_suites(campaign_config, output_root=output_root)
     output_dirs = [output_root]
+    generation_configs = [suite_run.generation_config for suite_run in suite_runs]
+    goals_output = args.goals_output or goal_ledger_path(output_root)
+    expected_goals = None
 
     if args.generate:
         if output_root.exists():
@@ -77,6 +103,12 @@ def main() -> None:
             generation_config = dict(suite_run.generation_config)
             generation_config["keep_existing"] = True
             generate_from_config(generation_config, suite_run.output_dir)
+        if args.expected_goals is None:
+            expected_goals = load_or_create_expected_goals(
+                generation_configs=generation_configs,
+                ledger_path=goals_output,
+                refresh=True,
+            )
 
     if args.validate and not args.coverage:
         validate_suites(output_dirs)
@@ -87,12 +119,18 @@ def main() -> None:
         measure_from_config(coverage_config, test_dir=output_dirs, output_dir=coverage_output)
 
     if args.summary:
+        if args.expected_goals is not None:
+            expected_goals = load_expected_goals(args.expected_goals)
+        elif expected_goals is None:
+            expected_goals = load_or_create_expected_goals(
+                generation_configs=generation_configs,
+                ledger_path=goals_output,
+                refresh=args.refresh_goals,
+            )
         summary = format_lean_report(
             test_dirs=output_dirs,
             coverage_dir=coverage_output if args.coverage or coverage_output.exists() else None,
-            expected_goals=expected_goals_from_generation_configs(
-                [suite_run.generation_config for suite_run in suite_runs]
-            ),
+            expected_goals=expected_goals,
             title="State Transition Campaign Summary",
         )
         print(summary)

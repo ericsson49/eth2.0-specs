@@ -18,6 +18,8 @@ from .suite_config import (
     resolve_suite_config_path,
 )
 
+GOAL_LEDGER_FILENAME = "strategy_goals.json"
+
 
 @dataclass(frozen=True)
 class GoalFunnel:
@@ -127,6 +129,47 @@ def load_expected_goals(path: Path) -> list[ExpectedGoal]:
         )
         for goal in data["goals"]
     ]
+
+
+def goal_ledger_path(output_dir: Path) -> Path:
+    return output_dir / GOAL_LEDGER_FILENAME
+
+
+def write_expected_goals(path: Path, expected_goals: list[ExpectedGoal]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "strategy": "input_profile",
+                "goals": [
+                    {
+                        "goal_id": goal.goal_id,
+                        "handler": goal.handler,
+                        "kind": goal.kind,
+                        "labels": list(goal.labels),
+                        "symbolic": goal.symbolic,
+                        "completable": goal.completable,
+                    }
+                    for goal in expected_goals
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+def load_or_create_expected_goals(
+    *,
+    generation_configs: Iterable[dict[str, Any]],
+    ledger_path: Path,
+    refresh: bool,
+) -> list[ExpectedGoal]:
+    if ledger_path.exists() and not refresh:
+        return load_expected_goals(ledger_path)
+    expected_goals = expected_goals_from_generation_configs(generation_configs)
+    write_expected_goals(ledger_path, expected_goals)
+    return expected_goals
 
 
 def expected_goals_from_generation_configs(

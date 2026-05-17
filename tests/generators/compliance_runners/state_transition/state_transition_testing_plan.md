@@ -393,6 +393,14 @@ decisions. A formula file is a scratchpad; a suite embeds the same formula
 fields under `generation`; the goal ledger is the compiled plan produced from
 that formula.
 
+`run_suite` and `run_campaign` write this compiled ledger to
+`<output>/strategy_goals.json` during generation. Summary mode reads that
+ledger when it already exists, avoiding repeated strategy enumeration in the
+normal preview/generate/report cycle. Use `--goals-output` to choose a
+different ledger path, or `--expected-goals` to compare against an existing
+frozen ledger. Use `--refresh-goals` to rebuild the cached ledger after
+editing suite formulas without regenerating vectors.
+
 Campaigns can be previewed as a set of suite formulas:
 
 ```bash

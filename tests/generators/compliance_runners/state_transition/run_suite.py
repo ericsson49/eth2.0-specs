@@ -10,7 +10,12 @@ import pytest
 
 from .check_reproducible import check_suite_reproducible
 from .generate_vectors import generate_vectors, normalize_handlers
-from .lean_report import expected_goals_from_generation_configs, format_lean_report
+from .lean_report import (
+    format_lean_report,
+    goal_ledger_path,
+    load_expected_goals,
+    load_or_create_expected_goals,
+)
 from .suite_config import (
     default_suite_coverage_dir,
     default_suite_output_dir,
@@ -70,6 +75,24 @@ def main() -> None:
         help="Optional file to write the suite health summary to.",
     )
     parser.add_argument(
+        "--goals-output",
+        type=Path,
+        help=(
+            "Optional compiled strategy-goal ledger path. "
+            "Defaults to <output>/strategy_goals.json."
+        ),
+    )
+    parser.add_argument(
+        "--expected-goals",
+        type=Path,
+        help="Existing frozen strategy-goal ledger to use for summary.",
+    )
+    parser.add_argument(
+        "--refresh-goals",
+        action="store_true",
+        help="Recompute the compiled strategy-goal ledger from the suite config.",
+    )
+    parser.add_argument(
         "--check-reproducible",
         action="store_true",
         help="Generate the suite twice in temporary directories and compare outputs.",
@@ -85,9 +108,18 @@ def main() -> None:
     suite_config = read_yaml(suite_config_path)
     generation_config = suite_config["generation"]
     output_dir = args.output or default_suite_output_dir(suite_config, suite_config_path)
+    generation_configs = [generation_config]
+    goals_output = args.goals_output or goal_ledger_path(output_dir)
+    expected_goals = None
 
     if args.generate:
         generate_from_config(generation_config, output_dir)
+        if args.expected_goals is None:
+            expected_goals = load_or_create_expected_goals(
+                generation_configs=generation_configs,
+                ledger_path=goals_output,
+                refresh=True,
+            )
 
     if args.validate and not args.coverage:
         validate_suite(output_dir)
@@ -107,10 +139,18 @@ def main() -> None:
         )
 
     if args.summary:
+        if args.expected_goals is not None:
+            expected_goals = load_expected_goals(args.expected_goals)
+        elif expected_goals is None:
+            expected_goals = load_or_create_expected_goals(
+                generation_configs=generation_configs,
+                ledger_path=goals_output,
+                refresh=args.refresh_goals,
+            )
         summary = format_lean_report(
             test_dirs=[output_dir],
             coverage_dir=coverage_output if args.coverage or coverage_output.exists() else None,
-            expected_goals=expected_goals_from_generation_configs([generation_config]),
+            expected_goals=expected_goals,
         )
         print(summary)
         if args.summary_output is not None:
