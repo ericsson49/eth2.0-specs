@@ -755,6 +755,7 @@ include_lower_orders: true
 ```bash
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.preview_strategy --formula /tmp/input_profile_pairwise.yaml
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.preview_strategy --suite electra_evolution_input_profile_interactions
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.preview_strategy --campaign electra_state_transition_evolution --goals-output /tmp/electra_evolution_goals.json
 ```
 
 The suite config is the reviewed source of truth. The goal ledger emitted by

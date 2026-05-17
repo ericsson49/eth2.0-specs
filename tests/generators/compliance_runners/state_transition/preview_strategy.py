@@ -17,7 +17,9 @@ from .strategies import (
 from .strategy_formula import (
     InputProfileStrategyFormula,
     load_input_profile_formula,
-    load_input_profile_formula_from_suite,
+    load_named_input_profile_formula_from_suite,
+    load_named_input_profile_formulas_from_campaign,
+    NamedInputProfileStrategyFormula,
 )
 
 
@@ -46,6 +48,10 @@ def parse_args() -> argparse.Namespace:
     formula_source.add_argument(
         "--suite",
         help="Suite config name or path to preview.",
+    )
+    formula_source.add_argument(
+        "--campaign",
+        help="Campaign config name or path to preview.",
     )
     parser.add_argument(
         "--order",
@@ -78,42 +84,57 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    formula = resolve_formula(args)
+    formulas = resolve_formulas(args)
 
     if args.goals_output is not None:
         write_expected_goals(
             args.goals_output,
-            formula=formula,
+            formulas=formulas,
         )
 
-    print("| handler | dimensions | symbolic | completable |")
-    print("| --- | ---: | ---: | ---: |")
-    for handler_name in formula.handlers:
-        print_handler_summary(
-            handler_name,
-            order=formula.order,
-            include_lower_orders=formula.include_lower_orders,
-            show=args.show,
-        )
+    print("| formula | handler | order | dimensions | symbolic | completable |")
+    print("| --- | --- | ---: | ---: | ---: | ---: |")
+    for named_formula in formulas:
+        for handler_name in named_formula.formula.handlers:
+            print_handler_summary(
+                named_formula.name,
+                handler_name,
+                order=named_formula.formula.order,
+                include_lower_orders=named_formula.formula.include_lower_orders,
+                show=args.show,
+            )
 
 
-def resolve_formula(args: argparse.Namespace) -> InputProfileStrategyFormula:
+def resolve_formulas(args: argparse.Namespace) -> tuple[NamedInputProfileStrategyFormula, ...]:
     if args.formula is not None:
-        return load_input_profile_formula(args.formula)
+        return (
+            NamedInputProfileStrategyFormula(
+                name=args.formula.stem,
+                formula=load_input_profile_formula(args.formula),
+            ),
+        )
     if args.suite is not None:
-        return load_input_profile_formula_from_suite(args.suite)
+        return (load_named_input_profile_formula_from_suite(args.suite),)
+    if args.campaign is not None:
+        return load_named_input_profile_formulas_from_campaign(args.campaign)
 
     unknown_handlers = set(args.handlers) - set(HANDLER_NAMES)
     if unknown_handlers:
         raise ValueError(f"Unknown handlers: {sorted(unknown_handlers)}")
-    return InputProfileStrategyFormula(
-        handlers=tuple(args.handlers),
-        order=args.order,
-        include_lower_orders=args.include_lower_orders,
+    return (
+        NamedInputProfileStrategyFormula(
+            name="ad_hoc",
+            formula=InputProfileStrategyFormula(
+                handlers=tuple(args.handlers),
+                order=args.order,
+                include_lower_orders=args.include_lower_orders,
+            ),
+        ),
     )
 
 
 def print_handler_summary(
+    formula_name: str,
     handler_name: str,
     *,
     order: int,
@@ -122,7 +143,7 @@ def print_handler_summary(
 ) -> None:
     context = load_input_profile_strategy_context(handler_name)
     if context is None:
-        print(f"| {handler_name} | 0 | 0 | 0 |")
+        print(f"| {formula_name} | {handler_name} | {order} | 0 | 0 | 0 |")
         return
 
     program = input_profile_n_wise_program(
@@ -139,7 +160,7 @@ def print_handler_summary(
         )
     )
     print(
-        f"| {handler_name} | {len(context.dimensions)} | "
+        f"| {formula_name} | {handler_name} | {order} | {len(context.dimensions)} | "
         f"{symbolic_count} | {len(completable_cases)} |"
     )
     for case in completable_cases[:show]:
@@ -153,26 +174,33 @@ def format_case_labels(labels: Iterable[str]) -> str:
 def write_expected_goals(
     output_path: Path,
     *,
-    formula: InputProfileStrategyFormula,
+    formulas: tuple[NamedInputProfileStrategyFormula, ...],
 ) -> None:
-    goals = [
-        goal.to_json_data()
-        for handler_name in formula.handlers
-        for goal in enumerate_input_profile_strategy_goals(
-            handler_name,
-            order=formula.order,
-            include_lower_orders=formula.include_lower_orders,
-        )
-    ]
+    goals_by_id = {}
+    for named_formula in formulas:
+        formula = named_formula.formula
+        for handler_name in formula.handlers:
+            for goal in enumerate_input_profile_strategy_goals(
+                handler_name,
+                order=formula.order,
+                include_lower_orders=formula.include_lower_orders,
+            ):
+                goals_by_id[goal.goal_id] = goal.to_json_data()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(
             {
                 "strategy": "input_profile",
-                "handlers": list(formula.handlers),
-                "order": formula.order,
-                "include_lower_orders": formula.include_lower_orders,
-                "goals": goals,
+                "formulas": [
+                    {
+                        "name": named_formula.name,
+                        "handlers": list(named_formula.formula.handlers),
+                        "order": named_formula.formula.order,
+                        "include_lower_orders": named_formula.formula.include_lower_orders,
+                    }
+                    for named_formula in formulas
+                ],
+                "goals": list(goals_by_id.values()),
             },
             indent=2,
             sort_keys=True,

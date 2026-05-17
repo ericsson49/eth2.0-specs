@@ -393,6 +393,14 @@ decisions. A formula file is a scratchpad; a suite embeds the same formula
 fields under `generation`; the goal ledger is the compiled plan produced from
 that formula.
 
+Campaigns can be previewed as a set of suite formulas:
+
+```bash
+uv run python -m tests.generators.compliance_runners.state_transition.preview_strategy \
+  --campaign electra_state_transition_evolution \
+  --goals-output strategy_goals.json
+```
+
 The dry-run can also emit a structured expected-goals ledger:
 
 ```bash

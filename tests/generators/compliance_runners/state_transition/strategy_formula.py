@@ -6,7 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from .generate_vectors import normalize_handlers
-from .suite_config import read_yaml, resolve_suite_config_path
+from .suite_config import (
+    read_yaml,
+    resolve_campaign_config_path,
+    resolve_suite_config_path,
+    suite_name_from_config,
+)
 
 
 @dataclass(frozen=True)
@@ -16,6 +21,14 @@ class InputProfileStrategyFormula:
     handlers: tuple[str, ...]
     order: int
     include_lower_orders: bool
+
+
+@dataclass(frozen=True)
+class NamedInputProfileStrategyFormula:
+    """Named input-profile formula from a suite, campaign entry, or scratch file."""
+
+    name: str
+    formula: InputProfileStrategyFormula
 
 
 def input_profile_formula_from_generation_config(
@@ -69,6 +82,39 @@ def load_input_profile_formula_from_suite(suite: str) -> InputProfileStrategyFor
     if formula is None:
         raise ValueError(f"Suite generation config is not input_profile: {suite}")
     return formula
+
+
+def load_named_input_profile_formula_from_suite(suite: str) -> NamedInputProfileStrategyFormula:
+    suite_config_path = resolve_suite_config_path(suite)
+    suite_config = read_yaml(suite_config_path)
+    formula = input_profile_formula_from_generation_config(suite_config["generation"])
+    if formula is None:
+        raise ValueError(f"Suite generation config is not input_profile: {suite}")
+    return NamedInputProfileStrategyFormula(
+        name=suite_name_from_config(suite_config, suite_config_path),
+        formula=formula,
+    )
+
+
+def load_named_input_profile_formulas_from_campaign(
+    campaign: str,
+) -> tuple[NamedInputProfileStrategyFormula, ...]:
+    campaign_config = read_yaml(resolve_campaign_config_path(campaign))
+    formulas = []
+    for suite_entry in campaign_config["suites"]:
+        suite_name = suite_entry if isinstance(suite_entry, str) else suite_entry["suite"]
+        suite_config_path = resolve_suite_config_path(suite_name)
+        suite_config = read_yaml(suite_config_path)
+        formula = input_profile_formula_from_generation_config(suite_config["generation"])
+        if formula is None:
+            continue
+        formulas.append(
+            NamedInputProfileStrategyFormula(
+                name=suite_name_from_config(suite_config, suite_config_path),
+                formula=formula,
+            )
+        )
+    return tuple(formulas)
 
 
 def input_profile_formulas_from_generation_configs(
