@@ -10,10 +10,9 @@ import pytest
 
 from .check_reproducible import check_suite_reproducible
 from .generate_vectors import generate_vectors, normalize_handlers
+from .goal_ledger import goal_ledger_path, load_expected_goals
 from .lean_report import (
     format_lean_report,
-    goal_ledger_path,
-    load_expected_goals,
     load_or_create_expected_goals,
 )
 from .suite_config import (

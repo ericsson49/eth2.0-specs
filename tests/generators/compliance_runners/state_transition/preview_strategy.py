@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import argparse
-import json
 from collections.abc import Iterable
 from pathlib import Path
 
 from tests.generators.compliance_runners.semantic_gen import enumerate_strategy
 
 from .abstract_cases import HANDLER_NAMES
+from .compare_strategy_funnel import ExpectedGoal
+from .goal_ledger import write_goal_ledger
 from .strategies import (
     enumerate_input_profile_strategy_cases,
     enumerate_input_profile_strategy_goals,
@@ -185,26 +186,28 @@ def write_expected_goals(
                 order=formula.order,
                 include_lower_orders=formula.include_lower_orders,
             ):
-                goals_by_id[goal.goal_id] = goal.to_json_data()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps(
-            {
-                "strategy": "input_profile",
-                "formulas": [
-                    {
-                        "name": named_formula.name,
-                        "handlers": list(named_formula.formula.handlers),
-                        "order": named_formula.formula.order,
-                        "include_lower_orders": named_formula.formula.include_lower_orders,
-                    }
-                    for named_formula in formulas
-                ],
-                "goals": list(goals_by_id.values()),
-            },
-            indent=2,
-            sort_keys=True,
-        )
+                goals_by_id[goal.goal_id] = ExpectedGoal(
+                    goal_id=goal.goal_id,
+                    handler=goal.handler,
+                    kind=goal.kind,
+                    labels=goal.labels,
+                    symbolic=goal.symbolic,
+                    completable=goal.completable,
+                )
+    write_goal_ledger(
+        output_path,
+        list(goals_by_id.values()),
+        metadata={
+            "formulas": [
+                {
+                    "name": named_formula.name,
+                    "handlers": list(named_formula.formula.handlers),
+                    "order": named_formula.formula.order,
+                    "include_lower_orders": named_formula.formula.include_lower_orders,
+                }
+                for named_formula in formulas
+            ],
+        },
     )
 
 

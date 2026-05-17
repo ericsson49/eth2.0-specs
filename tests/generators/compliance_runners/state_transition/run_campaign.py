@@ -4,12 +4,8 @@ import argparse
 import shutil
 from pathlib import Path
 
-from .lean_report import (
-    format_lean_report,
-    goal_ledger_path,
-    load_expected_goals,
-    load_or_create_expected_goals,
-)
+from .goal_ledger import goal_ledger_path, load_expected_goals
+from .lean_report import format_lean_report, load_or_create_expected_goals
 from .run_suite import generate_from_config, measure_from_config, validate_suites
 from .suite_config import (
     default_campaign_output_dir,

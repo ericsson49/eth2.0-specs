@@ -401,6 +401,25 @@ different ledger path, or `--expected-goals` to compare against an existing
 frozen ledger. Use `--refresh-goals` to rebuild the cached ledger after
 editing suite formulas without regenerating vectors.
 
+The full campaign loop is:
+
+```bash
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.preview_strategy \
+  --campaign electra_state_transition_evolution \
+  --goals-output /tmp/electra_state_transition_evolution_goals.json
+
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_campaign \
+  --campaign electra_state_transition_evolution \
+  --generate \
+  --validate \
+  --coverage \
+  --summary
+```
+
+The preview command is for planning or freezing a ledger before generation.
+The campaign command executes the reviewed suite formulas and writes the
+compiled ledger next to the generated vectors for later summaries.
+
 Campaigns can be previewed as a set of suite formulas:
 
 ```bash

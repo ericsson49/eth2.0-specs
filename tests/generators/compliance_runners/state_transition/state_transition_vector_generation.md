@@ -618,6 +618,33 @@ uv run --extra test python -m tests.generators.compliance_runners.state_transiti
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_campaign --campaign electra_state_transition_evolution
 ```
 
+The canonical campaign cycle is:
+
+```bash
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.preview_strategy \
+  --campaign electra_state_transition_evolution \
+  --goals-output /tmp/electra_state_transition_evolution_goals.json
+
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_campaign \
+  --campaign electra_state_transition_evolution \
+  --generate \
+  --validate \
+  --coverage \
+  --summary
+
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.lean_report \
+  --test-dir state_transition_tests/electra_state_transition_evolution \
+  --coverage-dir state_transition_coverage_evolution_campaign \
+  --expected-goals state_transition_tests/electra_state_transition_evolution/strategy_goals.json \
+  --show-missing 10
+```
+
+The first command previews and optionally freezes the intended goal ledger.
+The second command generates vectors, validates them, measures coverage, writes
+`state_transition_tests/electra_state_transition_evolution/strategy_goals.json`,
+and prints the lean report. The third command is the inspection pass when a
+reviewer wants missing materialized goals or a report over an existing run.
+
 The default runnable suite profile is
 `suite_configs/electra_evolution_input_profiles.yaml`. It fixes the fork,
 preset, handler set, input-profile generation mode, and coverage settings. If
