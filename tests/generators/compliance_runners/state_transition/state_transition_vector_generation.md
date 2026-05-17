@@ -730,19 +730,40 @@ generation:
 
 Supported dimensions are `outcomes`, `runners`, and `handlers`. Within a
 configured dimension, omitted labels are excluded. If candidates run out before
-a quota is filled, generation still succeeds and `run_suite --summary` reports
-the unmet quota.
+a quota is filled, generation still succeeds.
 
-The suite health summary can also be run directly over an existing generated
-suite:
+The default suite and campaign summary is intentionally lean. It reports target
+code coverage, the dry-run goal funnel, and the materialized strategy-goal
+shape. It can also be run directly over an existing generated suite:
 
 ```bash
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.summarize_suite --test-dir /tmp/state-transition-vectors --coverage-dir /tmp/state-transition-coverage --suite electra_evolution_input_profiles
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.lean_report --test-dir /tmp/state-transition-vectors --coverage-dir /tmp/state-transition-coverage --suite electra_evolution_input_profiles
 ```
 
-It reports generated handlers, intents per handler, missing ontology intents,
-observed outcome counts, semantic outcome mismatches, and target coverage totals
-when a coverage directory is provided.
+The dry-run preview can read either an authored suite config or a standalone
+strategy formula. Standalone formulas are useful for experiments before the
+choice is promoted into a suite:
+
+```yaml
+strategy: input_profile
+handlers:
+  - all
+order: 2
+include_lower_orders: true
+```
+
+```bash
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.preview_strategy --formula /tmp/input_profile_pairwise.yaml
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.preview_strategy --suite electra_evolution_input_profile_interactions
+```
+
+The suite config is the reviewed source of truth. The goal ledger emitted by
+`--goals-output` is a compiled strategy plan used for reproducibility,
+reporting, and materialization-funnel debugging.
+
+For deeper diagnostics, `summarize_suite` remains available. It reports stage
+shape, outcome counts, detailed aspect interactions, ontology fit, and semantic
+outcome mismatches.
 
 The reproducibility check generates the same suite config twice into fresh
 temporary directories and compares all emitted files byte-for-byte. Use

@@ -25,6 +25,8 @@ class RealizedGoal:
     goal_id: str
     handler: str
     case_path: Path
+    kind: str | None = None
+    labels: tuple[str, ...] = ()
 
 
 def parse_args() -> argparse.Namespace:
@@ -99,6 +101,8 @@ def load_realized_goals(test_dirs: Iterable[Path]) -> list[RealizedGoal]:
                     goal_id=goal_id,
                     handler=manifest["handler"],
                     case_path=manifest_path.parent,
+                    kind=meta.get("strategy_goal_kind"),
+                    labels=tuple(meta.get("strategy_goal_labels", [])),
                 )
             )
     return realized

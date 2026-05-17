@@ -372,6 +372,27 @@ test vectors. Future interpreters can map the same strategy program to
 MiniZinc, SAT, SMT, approximate uniform sampling, prioritization, or suite
 minimization.
 
+The same strategy formula can be supplied as an experiment file before it is
+promoted into a durable suite config:
+
+```yaml
+strategy: input_profile
+handlers:
+  - withdrawal_request
+order: 2
+include_lower_orders: true
+```
+
+```bash
+uv run python -m tests.generators.compliance_runners.state_transition.preview_strategy \
+  --formula /tmp/withdrawal_request_pairwise.yaml
+```
+
+Suite configs remain the source of truth for reviewed test-generation
+decisions. A formula file is a scratchpad; a suite embeds the same formula
+fields under `generation`; the goal ledger is the compiled plan produced from
+that formula.
+
 The dry-run can also emit a structured expected-goals ledger:
 
 ```bash
@@ -404,6 +425,11 @@ The report is useful both for campaign planning and for debugging
 materialization loss. If the dry-run says many goals are completable but only a
 small number are materialized, the missing goal examples identify which
 semantic combinations need materializer, selection, or deduplication work.
+
+The default suite and campaign summary should stay lean: target code coverage,
+strategy-goal funnel, and materialized goal shape. Deeper stage, interaction,
+ontology-fit, and semantic-outcome details remain available through the
+diagnostic `summarize_suite` command.
 
 ## Generation Modes
 

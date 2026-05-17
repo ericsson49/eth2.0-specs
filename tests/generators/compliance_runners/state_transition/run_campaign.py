@@ -4,6 +4,7 @@ import argparse
 import shutil
 from pathlib import Path
 
+from .lean_report import expected_goals_from_generation_configs, format_lean_report
 from .run_suite import generate_from_config, measure_from_config, validate_suites
 from .suite_config import (
     default_campaign_output_dir,
@@ -11,7 +12,6 @@ from .suite_config import (
     resolve_campaign_config_path,
     resolve_suite_config_path,
 )
-from .summarize_suite import summarize_suite
 
 
 def main() -> None:
@@ -87,13 +87,12 @@ def main() -> None:
         measure_from_config(coverage_config, test_dir=output_dirs, output_dir=coverage_output)
 
     if args.summary:
-        ontology_path = coverage_config.get("ontology")
-        summary = summarize_suite(
-            test_dir=output_dirs,
-            ontology_path=Path(ontology_path) if ontology_path else None,
+        summary = format_lean_report(
+            test_dirs=output_dirs,
             coverage_dir=coverage_output if args.coverage or coverage_output.exists() else None,
-            profile_dimensions=campaign_profile_dimensions(suite_runs),
-            profile_interaction_order=campaign_profile_interaction_order(suite_runs),
+            expected_goals=expected_goals_from_generation_configs(
+                [suite_run.generation_config for suite_run in suite_runs]
+            ),
             title="State Transition Campaign Summary",
         )
         print(summary)
@@ -135,26 +134,6 @@ def normalize_suite_entry(suite_entry) -> str:
             )
         return suite_entry["suite"]
     raise TypeError(f"Unsupported suite entry: {suite_entry!r}")
-
-
-def campaign_profile_dimensions(suite_runs: list[CampaignSuiteRun]) -> list[str] | None:
-    dimensions = []
-    for suite_run in suite_runs:
-        for dimension in suite_run.generation_config.get("profile_dimensions", []):
-            if dimension not in dimensions:
-                dimensions.append(dimension)
-    return dimensions or None
-
-
-def campaign_profile_interaction_order(suite_runs: list[CampaignSuiteRun]) -> int | None:
-    orders = [
-        suite_run.generation_config.get("profile_interaction_order")
-        for suite_run in suite_runs
-        if suite_run.generation_config.get("mode") == "profile_interaction"
-    ]
-    if not orders:
-        return None
-    return max(int(order or 2) for order in orders)
 
 
 if __name__ == "__main__":

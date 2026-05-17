@@ -14,6 +14,11 @@ from .strategies import (
     input_profile_n_wise_program,
     load_input_profile_strategy_context,
 )
+from .strategy_formula import (
+    InputProfileStrategyFormula,
+    load_input_profile_formula,
+    load_input_profile_formula_from_suite,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -24,7 +29,23 @@ def parse_args() -> argparse.Namespace:
         "handlers",
         nargs="*",
         default=HANDLER_NAMES,
-        help="Handlers to preview. Defaults to all known handlers.",
+        help=(
+            "Handlers to preview when no formula or suite is supplied. "
+            "Defaults to all known handlers."
+        ),
+    )
+    formula_source = parser.add_mutually_exclusive_group()
+    formula_source.add_argument(
+        "--formula",
+        type=Path,
+        help=(
+            "YAML formula to preview. Useful for experiments before committing "
+            "the formula to a suite config."
+        ),
+    )
+    formula_source.add_argument(
+        "--suite",
+        help="Suite config name or path to preview.",
     )
     parser.add_argument(
         "--order",
@@ -57,27 +78,39 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    unknown_handlers = set(args.handlers) - set(HANDLER_NAMES)
-    if unknown_handlers:
-        raise ValueError(f"Unknown handlers: {sorted(unknown_handlers)}")
+    formula = resolve_formula(args)
 
     if args.goals_output is not None:
         write_expected_goals(
             args.goals_output,
-            handlers=args.handlers,
-            order=args.order,
-            include_lower_orders=args.include_lower_orders,
+            formula=formula,
         )
 
     print("| handler | dimensions | symbolic | completable |")
     print("| --- | ---: | ---: | ---: |")
-    for handler_name in args.handlers:
+    for handler_name in formula.handlers:
         print_handler_summary(
             handler_name,
-            order=args.order,
-            include_lower_orders=args.include_lower_orders,
+            order=formula.order,
+            include_lower_orders=formula.include_lower_orders,
             show=args.show,
         )
+
+
+def resolve_formula(args: argparse.Namespace) -> InputProfileStrategyFormula:
+    if args.formula is not None:
+        return load_input_profile_formula(args.formula)
+    if args.suite is not None:
+        return load_input_profile_formula_from_suite(args.suite)
+
+    unknown_handlers = set(args.handlers) - set(HANDLER_NAMES)
+    if unknown_handlers:
+        raise ValueError(f"Unknown handlers: {sorted(unknown_handlers)}")
+    return InputProfileStrategyFormula(
+        handlers=tuple(args.handlers),
+        order=args.order,
+        include_lower_orders=args.include_lower_orders,
+    )
 
 
 def print_handler_summary(
@@ -120,17 +153,15 @@ def format_case_labels(labels: Iterable[str]) -> str:
 def write_expected_goals(
     output_path: Path,
     *,
-    handlers: Iterable[str],
-    order: int,
-    include_lower_orders: bool,
+    formula: InputProfileStrategyFormula,
 ) -> None:
     goals = [
         goal.to_json_data()
-        for handler_name in handlers
+        for handler_name in formula.handlers
         for goal in enumerate_input_profile_strategy_goals(
             handler_name,
-            order=order,
-            include_lower_orders=include_lower_orders,
+            order=formula.order,
+            include_lower_orders=formula.include_lower_orders,
         )
     ]
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -138,8 +169,9 @@ def write_expected_goals(
         json.dumps(
             {
                 "strategy": "input_profile",
-                "order": order,
-                "include_lower_orders": include_lower_orders,
+                "handlers": list(formula.handlers),
+                "order": formula.order,
+                "include_lower_orders": formula.include_lower_orders,
                 "goals": goals,
             },
             indent=2,

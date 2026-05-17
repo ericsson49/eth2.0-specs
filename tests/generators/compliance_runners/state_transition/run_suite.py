@@ -10,13 +10,13 @@ import pytest
 
 from .check_reproducible import check_suite_reproducible
 from .generate_vectors import generate_vectors, normalize_handlers
+from .lean_report import expected_goals_from_generation_configs, format_lean_report
 from .suite_config import (
     default_suite_coverage_dir,
     default_suite_output_dir,
     read_yaml,
     resolve_suite_config_path,
 )
-from .summarize_suite import summarize_suite
 
 RUNNER_TEST = Path("tests/generators/compliance_runners/state_transition/runner/test_run.py")
 
@@ -107,14 +107,10 @@ def main() -> None:
         )
 
     if args.summary:
-        ontology_path = coverage_config.get("ontology")
-        summary = summarize_suite(
-            test_dir=output_dir,
-            ontology_path=Path(ontology_path) if ontology_path else None,
+        summary = format_lean_report(
+            test_dirs=[output_dir],
             coverage_dir=coverage_output if args.coverage or coverage_output.exists() else None,
-            distribution=generation_config.get("distribution"),
-            profile_dimensions=generation_config.get("profile_dimensions"),
-            profile_interaction_order=generation_config.get("profile_interaction_order"),
+            expected_goals=expected_goals_from_generation_configs([generation_config]),
         )
         print(summary)
         if args.summary_output is not None:
