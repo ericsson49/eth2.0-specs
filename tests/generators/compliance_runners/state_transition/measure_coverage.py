@@ -426,6 +426,9 @@ def load_case_metadata_from_dir(test_dir: Path, yaml: YAML) -> list[dict[str, ob
                 "handler": manifest["handler"],
                 "guide_intent": meta.get("profile", {}).get("guide_intent"),
                 "profile": meta.get("profile", {}),
+                "strategy_goal_id": meta.get("strategy_goal_id"),
+                "strategy_goal_kind": meta.get("strategy_goal_kind"),
+                "strategy_goal_labels": meta.get("strategy_goal_labels", []),
                 "outcome": classify_case_outcome(meta),
             }
         )

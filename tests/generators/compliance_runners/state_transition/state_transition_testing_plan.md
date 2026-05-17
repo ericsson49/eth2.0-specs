@@ -17,8 +17,9 @@ The generator has four layers:
 
 1. **Abstract case generation**
    - A small Python subset is transpiled to MiniZinc.
-   - MiniZinc solutions describe abstract validator/state profiles.
-   - Guided ontology intents expand those profiles into targeted cases.
+   - MiniZinc solutions describe abstract input aspects.
+   - Handler-specific aspect models expand those assignments into targeted
+     cases.
 
 2. **Materialization**
    - Abstract cases are converted into concrete reference-test vectors.
@@ -120,7 +121,7 @@ The current implementation assigns one primary intent to each generated case.
 Real executions can touch multiple semantic facts at once, such as credential
 type, queue capacity, active status, amount class, and outcome. The observed
 interaction report is the first step toward measuring these combinations. Over
-time, materializers and profiles can expose more semantic dimensions so
+time, materializers and aspect models can expose more semantic dimensions so
 coverage can move from only `handler x intent` toward richer pairs or sampled
 triples such as `handler x credential_type x outcome`.
 
@@ -130,7 +131,7 @@ items.
 Input-side concepts are the things generation can choose or construct before
 execution:
 
-- aspects, profile models, and dimensions
+- aspects, aspect models, and dimensions
 - operation input shapes
 - selected handler and stage context
 - materializer parameters
@@ -359,7 +360,7 @@ monad with:
 - `n_wise_strategy`: reusable `n`-wise aspect-combination strategy
 - `enumerate_strategy`: a dry-run interpreter for finite strategies
 
-State-transition code can then adapt existing profile dimensions into generic
+State-transition code can then adapt existing aspect dimensions into generic
 aspect dimensions. The preview command:
 
 ```bash
@@ -419,34 +420,39 @@ tries to produce one materialized vector for each handler in scope. Its goal is
 not deep semantic coverage; it establishes that each handler can be generated,
 serialized, executed, and measured.
 
-**Profile-partition generation** is the next simple-generation rung. It still
-uses the shared MiniZinc validator-state profile model, but it chooses cases to
-cover values of configured input-side profile dimensions such as credential
+**Validator-state aspect generation** is the next simple-generation rung. It
+still uses the shared MiniZinc validator-state aspect model, but it chooses
+cases to cover values of configured input-side dimensions such as credential
 type, lifecycle relation, balance relation, slashing status, and pending queue
 flags. This gives deterministic input coverage before introducing semantic
-intent targets.
+intent targets. The current config name for this implementation rung is
+`profile_partition`.
 
-**Profile-interaction generation** keeps the same input-first posture, but
-samples combinations of profile dimensions. The first implemented form is
+**Validator-state aspect interaction generation** keeps the same input-first
+posture, but samples combinations of validator-state aspect dimensions. The
+first implemented form is
 pairwise coverage, for example `withdrawal_credential_type x slashed` or
 `exit_epoch_set x has_pending_withdrawal_request`. This is intended primarily
 as an implementation-diversity rung: two states may touch similar spec code
 while still stressing very different client cache keys, indexes, and fast
-paths.
+paths. The current config name for this implementation rung is
+`profile_interaction`.
 
 **Input-profile generation** expresses handler-specific branch and input knobs
 as small reusable MiniZinc models, such as operation input validity, queue
-shape, epoch-boundary shape, and participation/finality shape. Each handler
-declares the profile models that can affect it, and the sampler covers values
+shape, epoch-boundary shape, and participation/finality shape. Conceptually,
+this is input-aspect generation; `input_profile` is the current implementation
+name. Each handler declares the aspect models that can affect it, and the
+sampler covers values
 from those models without running the heavier pairwise interaction suite. This
 is still input-first, but it reaches more protocol behavior because the sampled
 inputs include operation and epoch-processing shapes, not only validator state.
 The same mode can use `input_profile_order: 2` to sample pairwise combinations
-over the handler-specific input profile dimensions. Pairwise and higher-order
-input-profile sampling filters combinations against the solved MiniZinc profile
+over the handler-specific input aspect dimensions. Pairwise and higher-order
+input-aspect sampling filters combinations against the solved MiniZinc aspect
 models, removing same-model tuples that cannot exist together while keeping
 cross-model compatibility as a separate materialization concern. Case metadata
-separates the sampled constraints from completed supporting profile rows, so
+separates the sampled constraints from completed supporting aspect rows, so
 coverage reports can stay focused on the sampled target while materializers get
 the fuller abstract input shape.
 
@@ -464,7 +470,7 @@ A useful future refinement is to model handler branching logic directly, but
 only at the abstract guard level. These models should not try to translate the
 full handler implementation, full SSA form, SSZ containers, hashes, BLS
 verification, or exact post-state mutation. Instead, they should encode bounded
-path conditions over profile dimensions.
+path conditions over aspect dimensions.
 
 In this view, MiniZinc is a target for branch-reachability models, not a target
 for faithful handler transpilation:
@@ -503,7 +509,7 @@ embedding all of the branch recipes imperatively in materializers.
 The concrete operation-handler prototypes apply this shape to proposer and
 attester slashings, attestations, deposits, BLS-to-execution changes, voluntary
 exits, withdrawal requests, consolidation requests, and sync aggregates. Their
-input profiles include a `branch_target` dimension for the relevant guard
+input aspect models include a `branch_target` dimension for the relevant guard
 chain: structural operation checks, lookup failures, credential and source
 address checks, activity and exit checks, pending-request checks, participation
 cardinality, and success paths. For consolidation requests, the branch target
@@ -513,7 +519,7 @@ plus request, then the normal runner validates the outcome and the coverage
 report verifies that the intended branch was reached.
 
 Epoch-processing handlers use the same shape, but their branch targets live on
-state/profile models instead of operation-input models. Validator-state branch
+state/aspect models instead of operation-input models. Validator-state branch
 targets cover deposit requests, registry updates, slashings, and effective
 balance updates. Participation and epoch-boundary branch targets cover
 finality, inactivity, rewards, participation flag rotation, reset handlers, and

@@ -39,7 +39,7 @@ def main() -> None:
     parser.add_argument(
         "--ontology",
         type=Path,
-        help="YAML ontology declaring target functions, guide intents, and expected outcomes.",
+        help="YAML ontology declaring target functions, semantic intents, and expected outcomes.",
     )
     parser.add_argument(
         "--suite",
@@ -107,14 +107,16 @@ def summarize_suite(
     lines.append("")
     lines.extend(format_outcome_counts(staged_cases))
     lines.append("")
-    lines.extend(format_profile_partitions(staged_cases, profile_dimensions))
+    lines.extend(format_validator_state_aspect_partitions(staged_cases, profile_dimensions))
     lines.append("")
-    lines.extend(format_input_profiles(staged_cases))
+    lines.extend(format_input_aspects(staged_cases))
     lines.append("")
-    lines.extend(format_input_profile_interactions(staged_cases))
+    lines.extend(format_input_aspect_interactions(staged_cases))
+    lines.append("")
+    lines.extend(format_strategy_goals(staged_cases))
     lines.append("")
     lines.extend(
-        format_profile_interactions(
+        format_validator_state_aspect_interactions(
             staged_cases,
             profile_dimensions,
             profile_interaction_order,
@@ -284,11 +286,11 @@ def format_outcome_counts(cases: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
-def format_profile_partitions(
+def format_validator_state_aspect_partitions(
     cases: list[dict[str, Any]],
     profile_dimensions: list[str] | None,
 ) -> list[str]:
-    lines = ["Profile Partitions", "------------------"]
+    lines = ["Validator-State Aspect Partitions", "---------------------------------"]
     if not profile_dimensions:
         lines.append("not configured")
         return lines
@@ -318,8 +320,8 @@ def format_profile_partitions(
     return lines
 
 
-def format_input_profiles(cases: list[dict[str, Any]]) -> list[str]:
-    lines = ["Input Profiles", "--------------"]
+def format_input_aspects(cases: list[dict[str, Any]]) -> list[str]:
+    lines = ["Input Aspects", "-------------"]
     observed = collect_input_profiles(cases)
     if not observed:
         lines.append("not configured")
@@ -343,8 +345,8 @@ def collect_input_profiles(cases: list[dict[str, Any]]) -> dict[str, dict[str, s
     return observed
 
 
-def format_input_profile_interactions(cases: list[dict[str, Any]]) -> list[str]:
-    lines = ["Input Profile Interactions", "--------------------------"]
+def format_input_aspect_interactions(cases: list[dict[str, Any]]) -> list[str]:
+    lines = ["Input Aspect Interactions", "-------------------------"]
     observed = collect_input_profile_interactions(cases)
     if not observed:
         lines.append("not configured")
@@ -391,12 +393,35 @@ def flatten_input_profile(input_profiles: dict[str, dict[str, Any]]) -> list[tup
     return flattened
 
 
-def format_profile_interactions(
+def format_strategy_goals(cases: list[dict[str, Any]]) -> list[str]:
+    lines = ["Strategy Goals", "--------------"]
+    goals = [case for case in cases if case.get("strategy_goal_id")]
+    if not goals:
+        lines.append("not configured")
+        return lines
+
+    goal_ids = {case["strategy_goal_id"] for case in goals}
+    kind_counts = Counter(case.get("strategy_goal_kind") or "unknown" for case in goals)
+    lines.append(f"materialized goals: {len(goal_ids)}")
+    lines.append(f"goal-backed cases: {len(goals)}/{len(cases)}")
+    lines.append(f"kinds: {format_counter(kind_counts)}")
+
+    labels = Counter()
+    for case in goals:
+        labels.update(str(label) for label in case.get("strategy_goal_labels", []))
+    if labels:
+        lines.append("top labels:")
+        for label, count in sorted(labels.items(), key=lambda item: (-item[1], item[0]))[:10]:
+            lines.append(f"  {label}: {count}")
+    return lines
+
+
+def format_validator_state_aspect_interactions(
     cases: list[dict[str, Any]],
     profile_dimensions: list[str] | None,
     profile_interaction_order: int | None,
 ) -> list[str]:
-    lines = ["Profile Interactions", "--------------------"]
+    lines = ["Validator-State Aspect Interactions", "-----------------------------------"]
     if not profile_dimensions or profile_interaction_order is None:
         lines.append("not configured")
         return lines

@@ -115,8 +115,10 @@ bugs in dependencies between epoch sub-transitions.
 
 ## Core Abstract State Groups
 
-The model should be composed from small finite profiles. Each profile summarizes
-one part of `BeaconState` that is important for branch coverage.
+The model should be composed from small finite aspects. Each aspect summarizes
+one part of `BeaconState` that is important for branch coverage. The current
+implementation still uses `profile` in some config and metadata names for
+these finite aspect models.
 
 ### Epoch Context
 
@@ -569,7 +571,7 @@ that case and restores the previous setting afterwards. The first use of this is
 `operations/deposit` for an invalid proof-of-possession signature.
 
 The `input_profile` mode composes handler-specific aspect models with the
-shared validator profile model. Sampled goals are written to `meta.yaml` as
+shared validator-state aspect model. Sampled goals are written to `meta.yaml` as
 coverage tags and stable `strategy_goal_id` values, making it possible to
 compare planned semantic coverage with materialized vectors and runtime
 coverage.
@@ -601,7 +603,7 @@ uv run --extra test python -m tests.generators.compliance_runners.state_transiti
 
 By default, the command infers the pyspec source files to report from generated
 `manifest.yaml` files. Use `--source-file` one or more times to override the
-focused report targets. It also infers target functions, guide intents, and
+focused report targets. It also infers target functions, semantic intents, and
 expected outcomes from `test_ontology.yaml`, then writes `target_coverage.txt`
 and `semantic_coverage.txt`. Use `--ontology` to provide an explicit ontology
 YAML.
@@ -647,9 +649,11 @@ generation:
 Suite configs can choose a generation mode. `simple` is the default input-first
 mode, `handler_touch` produces one shallow materialized vector per requested
 handler, `profile_partition` samples configured values from the MiniZinc
-validator-state profile model for each requested handler, `profile_interaction`
-samples combinations of profile dimensions, `input_profile` samples
-handler-specific input profile models:
+validator-state aspect model for each requested handler, `profile_interaction`
+samples combinations of validator-state aspect dimensions, and `input_profile`
+samples handler-specific input aspect models. The names still contain
+`profile` because that is the current implementation term for finite aspect
+models:
 
 ```yaml
 generation:
@@ -688,16 +692,16 @@ generation:
   profile_interaction_order: 2
 ```
 
-The input-profile mode composes small MiniZinc models for operation input
+The input-profile mode composes small MiniZinc aspect models for operation input
 validity, queue shape, epoch-boundary shape, participation/finality shape, and
-validator-state shape according to each handler's declared input profile set.
+validator-state shape according to each handler's declared input aspect set.
 `input_profile_order` controls one-wise or pairwise sampling over the mapped
-input profile dimensions. For `input_profile_order > 1`, combinations are
-filtered against the profile model solutions, so tuples that are impossible
-inside one MiniZinc profile model are not emitted. Cross-profile compatibility
+input aspect dimensions. For `input_profile_order > 1`, combinations are
+filtered against the aspect model solutions, so tuples that are impossible
+inside one MiniZinc aspect model are not emitted. Cross-aspect compatibility
 is still left to handler materialization and future relation models. Generated
 case metadata keeps the sampled tuple in `input_profile_constraints` and stores
-deterministically completed supporting profile rows in `input_profiles`.
+deterministically completed supporting aspect rows in `input_profiles`.
 
 ```yaml
 generation:
@@ -750,11 +754,11 @@ reporting unit. Campaign configs live in `campaign_configs/` and list
 non-overlapping suite configs plus aggregate coverage settings:
 
 The evolution campaign, `electra_state_transition_evolution`, is organized as a
-profile-based test-generation campaign. It currently contains
+profile/aspect-based test-generation campaign. It currently contains
 `electra_evolution_input_profiles`, which samples one-wise handler-specific
-input profiles and branch targets, and
+input aspects and branch targets, and
 `electra_evolution_input_profile_interactions`, which samples pairwise
-interactions over those handler-specific input profiles. The older broad
+interactions over those handler-specific input aspects. The older broad
 `electra_evolution_profile_interactions` suite remains available for
 validator-state diversity experiments, but is not part of the default evolution
 campaign for now because it is heavier and less targeted. Future phases can add
@@ -780,4 +784,4 @@ pairwise combinations over `stage`, `runner`, `handler`, `intent`, and
 only the number of observed combinations per dimension pair; the detailed file
 lists each observed combination and its count. The same schema can later raise
 `max_order` to `3` for triple-wise reporting or add stage-specific dimensions
-from generated case profiles.
+from generated case metadata.
