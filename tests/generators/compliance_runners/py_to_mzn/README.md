@@ -386,23 +386,23 @@ This gives two forms of confidence:
 
 ## CLI
 
-The transpiler implementation currently lives with the compliance-test tooling:
+The transpiler implementation lives with the compliance-test tooling:
 
 ```text
-tests/generators/compliance_runners/py_to_mzn.py
+tests/generators/compliance_runners/py_to_mzn/
 ```
 
-The current CLI lives at:
+The CLI lives at:
 
 ```text
-tests/generators/compliance_runners/py_to_mzn_cli.py
+tests/generators/compliance_runners/py_to_mzn/cli.py
 ```
 
 Usage:
 
 ```bash
-uv run --extra test python -m tests.generators.compliance_runners.py_to_mzn_cli vs.py
-uv run --extra test python -m tests.generators.compliance_runners.py_to_mzn_cli vs.py -o vs.mzn
+uv run --extra test python -m tests.generators.compliance_runners.py_to_mzn.cli vs.py
+uv run --extra test python -m tests.generators.compliance_runners.py_to_mzn.cli vs.py -o vs.mzn
 ```
 
 It prints MiniZinc to stdout by default and writes to a file when `--output` is

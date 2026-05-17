@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from .py_to_mzn import Convertor
+from . import Convertor
 
 
 def main() -> None:
