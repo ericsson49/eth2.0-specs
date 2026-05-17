@@ -349,8 +349,9 @@ choose handler/aspects
   -> materialize only selected witnesses
 ```
 
-The initial implementation lives in `tests/generators/compliance_runners/gen_base`.
-It provides a small `Gen` monad with:
+The generic implementation lives in
+`tests/generators/compliance_runners/semantic_gen`. It provides a small `Gen`
+monad with:
 
 - `choose`: finite nondeterministic choice
 - `require`: symbolic constraint accumulation

@@ -1,4 +1,4 @@
-from tests.generators.compliance_runners.gen_base import (
+from tests.generators.compliance_runners.semantic_gen import (
     AspectDimension,
     Constraint,
     cover,

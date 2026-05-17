@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from tests.generators.compliance_runners.gen_base import (
+from tests.generators.compliance_runners.semantic_gen import (
     AspectAssignment,
     AspectDimension,
     enumerate_strategy,

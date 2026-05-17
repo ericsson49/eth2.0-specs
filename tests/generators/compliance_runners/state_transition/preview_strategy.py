@@ -5,7 +5,7 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
-from tests.generators.compliance_runners.gen_base import enumerate_strategy
+from tests.generators.compliance_runners.semantic_gen import enumerate_strategy
 
 from .abstract_cases import HANDLER_NAMES
 from .strategies import (

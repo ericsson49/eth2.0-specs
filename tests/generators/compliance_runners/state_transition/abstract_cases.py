@@ -7,8 +7,8 @@ from importlib import resources
 from itertools import combinations, product
 from typing import Any
 
-from tests.generators.compliance_runners.gen_base import make_strategy_goal
 from tests.generators.compliance_runners.py_to_mzn import Convertor, get_solutions
+from tests.generators.compliance_runners.semantic_gen import make_strategy_goal
 
 from .ontology import guided_operation_intents
 
