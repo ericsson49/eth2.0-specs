@@ -20,8 +20,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--campaign",
-        default="electra_state_transition",
-        help="Campaign config name or path. Defaults to electra_state_transition.",
+        default="electra_state_transition_evolution",
+        help="Campaign config name or path. Defaults to electra_state_transition_evolution.",
     )
     parser.add_argument(
         "--generate",

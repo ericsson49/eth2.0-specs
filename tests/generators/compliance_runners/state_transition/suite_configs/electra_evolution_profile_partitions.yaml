@@ -8,7 +8,6 @@ generation:
     - all
   per_handler_limit: 24
   mode: profile_partition
-  guided: false
   profile_dimensions:
     - withdrawal_credential_type
     - activation_epoch_to_current_epoch

@@ -16,8 +16,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--suite",
-        default="electra_operations_guided",
-        help="Suite config name or path. Defaults to electra_operations_guided.",
+        default="electra_evolution_input_profiles",
+        help="Suite config name or path. Defaults to electra_evolution_input_profiles.",
     )
     parser.add_argument(
         "--keep-temp",
@@ -74,7 +74,6 @@ def generate_from_config(generation_config: dict, output_dir: Path) -> None:
         changed_only=generation_config.get("changed_only", False),
         unchanged_only=generation_config.get("unchanged_only", False),
         invalid_only=generation_config.get("invalid_only", False),
-        guided=generation_config.get("guided", False),
         mode=generation_config.get("mode"),
         profile_dimensions=generation_config.get("profile_dimensions"),
         profile_interaction_order=generation_config.get("profile_interaction_order", 2),

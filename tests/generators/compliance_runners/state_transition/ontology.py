@@ -18,19 +18,6 @@ def load_test_ontology(path: Path | None = None) -> dict[str, Any]:
     return yaml.load(ontology.read_text())
 
 
-def guided_operation_intents(ontology: dict[str, Any] | None = None) -> dict[str, tuple[str, ...]]:
-    ontology = ontology or load_test_ontology()
-    operation_intents = ontology["intents"]["operations"]
-    epoch_processing_intents = ontology["intents"].get("epoch_processing", {})
-    return {
-        handler_name: tuple(intents)
-        for handler_name, intents in {
-            **operation_intents,
-            **epoch_processing_intents,
-        }.items()
-    }
-
-
 def stage_handlers(ontology: dict[str, Any] | None = None) -> dict[str, tuple[str, ...]]:
     ontology = ontology or load_test_ontology()
     return {

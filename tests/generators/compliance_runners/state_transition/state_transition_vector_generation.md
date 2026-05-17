@@ -547,7 +547,7 @@ uv run --extra test python -m tests.generators.compliance_runners.state_transiti
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5 --changed-only
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5 --unchanged-only
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --per-handler-limit 5 --invalid-only
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --handler all --per-handler-limit 20 --guided
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --handler all --per-handler-limit 20 --mode input_profile --input-profile-order 2
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --handler consolidation_request --per-handler-limit 5 --changed-only
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.generate_vectors --output /tmp/state-transition-vectors --handler all --per-handler-limit 5 --changed-only
 ```
@@ -568,11 +568,11 @@ branches may set `bls_setting: 1` in `meta.yaml`; the runner enables BLS only fo
 that case and restores the previous setting afterwards. The first use of this is
 `operations/deposit` for an invalid proof-of-possession signature.
 
-The `--guided` mode keeps the shared validator profile model, but overlays
-handler-specific guard intents. These intents are written to `meta.yaml` as
-`coverage_tags`, making it possible to compare the intended guard coverage with
-runtime coverage and refine the model or materializer when a tag does not reach
-the expected branch.
+The `input_profile` mode composes handler-specific aspect models with the
+shared validator profile model. Sampled goals are written to `meta.yaml` as
+coverage tags and stable `strategy_goal_id` values, making it possible to
+compare planned semantic coverage with materialized vectors and runtime
+coverage.
 
 It writes standard compliance-style operation cases:
 
@@ -610,23 +610,17 @@ For reproducible suite generation, use a checked-in suite config:
 
 ```bash
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_evolution_handler_touch --coverage --summary
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --coverage --summary
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_validator_lifecycle_guided --coverage --summary
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_participation_finality_guided --coverage --summary
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_rotating_resets_guided --coverage --summary
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_committee_sync_guided --coverage --summary
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_operations_guided --check-reproducible
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_campaign --campaign electra_state_transition
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_evolution_input_profiles --coverage --summary
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_evolution_input_profile_interactions --coverage --summary
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_suite --suite electra_evolution_input_profiles --check-reproducible
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.run_campaign --campaign electra_state_transition_evolution
 ```
 
-The default guided Electra operations profile lives in
-`suite_configs/electra_operations_guided.yaml` and fixes the fork, preset,
-non-stage operation handlers, generation mode, and coverage settings. Stage
-owned handlers, including epoch-processing handlers and `sync_aggregate`, live
-in stage-specific suite configs instead. If `run_suite --output` is not
-provided, the suite runner derives the vector output directory as
+The default runnable suite profile is
+`suite_configs/electra_evolution_input_profiles.yaml`. It fixes the fork,
+preset, handler set, input-profile generation mode, and coverage settings. If
+`run_suite --output` is not provided, the suite runner derives the vector output
+directory as
 `state_transition_tests/<suite-name>`. If `run_suite --coverage-output` is not
 provided, it derives the coverage output directory as
 `state_transition_coverage/<suite-name>`.
@@ -655,9 +649,7 @@ mode, `handler_touch` produces one shallow materialized vector per requested
 handler, `profile_partition` samples configured values from the MiniZinc
 validator-state profile model for each requested handler, `profile_interaction`
 samples combinations of profile dimensions, `input_profile` samples
-handler-specific input profile models, and `guided` expands handlers into
-ontology intent cases. The legacy `guided: true` field is still supported and
-maps to `mode: guided` when `mode` is omitted:
+handler-specific input profile models:
 
 ```yaml
 generation:
@@ -741,7 +733,7 @@ The suite health summary can also be run directly over an existing generated
 suite:
 
 ```bash
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.summarize_suite --test-dir /tmp/state-transition-vectors --coverage-dir /tmp/state-transition-coverage --suite electra_operations_guided
+uv run --extra test python -m tests.generators.compliance_runners.state_transition.summarize_suite --test-dir /tmp/state-transition-vectors --coverage-dir /tmp/state-transition-coverage --suite electra_evolution_input_profiles
 ```
 
 It reports generated handlers, intents per handler, missing ontology intents,
@@ -757,31 +749,16 @@ Coverage campaigns aggregate multiple generated suites under one ontology-level
 reporting unit. Campaign configs live in `campaign_configs/` and list
 non-overlapping suite configs plus aggregate coverage settings:
 
-```yaml
-name: electra_state_transition
-output: state_transition_tests/electra_state_transition
-suites:
-  - electra_operations_guided
-  - electra_validator_lifecycle_guided
-  - electra_committee_sync_guided
-coverage:
-  output: state_transition_coverage_campaign
-  ontology: tests/generators/compliance_runners/state_transition/test_ontology.yaml
-```
-
 The evolution campaign, `electra_state_transition_evolution`, is organized as a
-test-generation maturity ladder. It currently contains
-`electra_evolution_handler_touch`, which establishes shallow handler coverage
-from scratch, and `electra_evolution_profile_partitions`, which broadens input
-coverage with MiniZinc-backed profile dimensions, and
-`electra_evolution_input_profiles`, which samples handler-specific input
-profiles learned from guided materializers, and
+profile-based test-generation campaign. It currently contains
+`electra_evolution_input_profiles`, which samples one-wise handler-specific
+input profiles and branch targets, and
 `electra_evolution_input_profile_interactions`, which samples pairwise
 interactions over those handler-specific input profiles. The older broad
 `electra_evolution_profile_interactions` suite remains available for
 validator-state diversity experiments, but is not part of the default evolution
 campaign for now because it is heavier and less targeted. Future phases can add
-intent-guided, mutation, and state-corpus reuse suites under the same campaign
+mutation and state-corpus reuse suites under the same campaign
 shape.
 
 The campaign runner generates each suite, validates all generated directories,

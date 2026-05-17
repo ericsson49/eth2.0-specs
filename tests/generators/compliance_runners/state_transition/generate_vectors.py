@@ -13,7 +13,6 @@ from tests.generators.compliance_runners.gen_base.pytest_support import configur
 from tests.infra.dumper import Dumper
 
 from .abstract_cases import (
-    enumerate_guided_operation_cases,
     enumerate_input_profile_cases,
     enumerate_materializable_operation_cases,
     enumerate_profile_interaction_cases,
@@ -51,11 +50,6 @@ def main() -> None:
         help="Only write invalid operation cases that are expected to raise an assertion.",
     )
     parser.add_argument(
-        "--guided",
-        action="store_true",
-        help="Generate handler-specific guard-intent cases for coverage evaluation.",
-    )
-    parser.add_argument(
         "--mode",
         choices=(
             "simple",
@@ -63,12 +57,8 @@ def main() -> None:
             "profile_partition",
             "profile_interaction",
             "input_profile",
-            "guided",
         ),
-        help=(
-            "Generation strategy. Defaults to 'guided' when --guided is set, "
-            "otherwise 'simple'."
-        ),
+        help="Generation strategy. Defaults to 'simple'.",
     )
     parser.add_argument(
         "--profile-dimension",
@@ -133,7 +123,6 @@ def main() -> None:
         changed_only=args.changed_only,
         unchanged_only=args.unchanged_only,
         invalid_only=args.invalid_only,
-        guided=args.guided,
         mode=args.mode,
         profile_dimensions=args.profile_dimension,
         profile_interaction_order=args.profile_interaction_order,
@@ -177,7 +166,6 @@ def generate_vectors(
     changed_only: bool,
     unchanged_only: bool,
     invalid_only: bool,
-    guided: bool,
     mode: str | None = None,
     profile_dimensions: list[str] | None = None,
     profile_interaction_order: int = 2,
@@ -193,10 +181,8 @@ def generate_vectors(
 
     dumper = Dumper()
     distribution_tracker = DistributionTracker.from_config(distribution)
-    generation_mode = normalize_generation_mode(mode, guided)
-    if generation_mode == "guided":
-        abstract_cases = enumerate_guided_operation_cases(handlers=handlers)
-    elif generation_mode == "handler_touch":
+    generation_mode = normalize_generation_mode(mode)
+    if generation_mode == "handler_touch":
         abstract_cases = enumerate_materializable_operation_cases(handlers=handlers)
     elif generation_mode == "profile_partition":
         abstract_cases = enumerate_profile_partition_cases(
@@ -258,7 +244,7 @@ def generate_vectors(
             return
 
 
-def normalize_generation_mode(mode: str | None, guided: bool) -> str:
+def normalize_generation_mode(mode: str | None) -> str:
     if mode is not None:
         if mode not in (
             "simple",
@@ -266,12 +252,9 @@ def normalize_generation_mode(mode: str | None, guided: bool) -> str:
             "profile_partition",
             "profile_interaction",
             "input_profile",
-            "guided",
         ):
             raise ValueError(f"Unsupported generation mode: {mode}")
         return mode
-    if guided:
-        return "guided"
     return "simple"
 
 

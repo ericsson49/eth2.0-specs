@@ -434,8 +434,8 @@ as an implementation-diversity rung: two states may touch similar spec code
 while still stressing very different client cache keys, indexes, and fast
 paths.
 
-**Input-profile generation** promotes knobs learned from guided materializers
-into small reusable MiniZinc models, such as operation input validity, queue
+**Input-profile generation** expresses handler-specific branch and input knobs
+as small reusable MiniZinc models, such as operation input validity, queue
 shape, epoch-boundary shape, and participation/finality shape. Each handler
 declares the profile models that can affect it, and the sampler covers values
 from those models without running the heavier pairwise interaction suite. This
@@ -535,8 +535,8 @@ profile-partition suite, an input-profile suite, and a pairwise input-profile
 interaction suite. The broader validator-state profile-interaction suite is
 available as an implementation-diversity experiment, but it is not in the
 default evolution campaign for now because it is heavier. Future campaign
-phases can add intent-guided suites, mutation suites, and state-corpus reuse
-suites without changing the basic reporting loop.
+phases can add mutation suites and state-corpus reuse suites without changing
+the basic reporting loop.
 
 ## Implemented Coverage
 

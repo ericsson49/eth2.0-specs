@@ -8,7 +8,6 @@ generation:
     - all
   per_handler_limit: 1
   mode: handler_touch
-  guided: false
   changed_only: false
   unchanged_only: false
   invalid_only: false

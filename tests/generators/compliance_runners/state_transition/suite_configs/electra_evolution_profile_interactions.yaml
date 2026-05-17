@@ -8,7 +8,6 @@ generation:
     - all
   per_handler_limit: 48
   mode: profile_interaction
-  guided: false
   profile_interaction_order: 2
   profile_dimensions:
     - withdrawal_credential_type

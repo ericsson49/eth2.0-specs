@@ -9,7 +9,6 @@ generation:
   per_handler_limit: 48
   mode: input_profile
   input_profile_order: 2
-  guided: false
   changed_only: false
   unchanged_only: false
   invalid_only: false
