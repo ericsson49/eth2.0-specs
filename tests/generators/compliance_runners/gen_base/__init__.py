@@ -1,3 +1,8 @@
+from .goals import (
+    make_goal_id,
+    make_strategy_goal,
+    StrategyGoal,
+)
 from .strategy import (
     annotate,
     AspectAssignment,
@@ -28,6 +33,7 @@ __all__ = [
     "CoverageItem",
     "Gen",
     "StrategyCase",
+    "StrategyGoal",
     "StrategyState",
     "annotate",
     "choose",
@@ -39,6 +45,8 @@ __all__ = [
     "enumerate_strategy",
     "feasibility_constraint",
     "guard",
+    "make_goal_id",
+    "make_strategy_goal",
     "n_wise_strategy",
     "pure",
     "require",

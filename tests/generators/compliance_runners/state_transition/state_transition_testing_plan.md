@@ -370,6 +370,39 @@ test vectors. Future interpreters can map the same strategy program to
 MiniZinc, SAT, SMT, approximate uniform sampling, prioritization, or suite
 minimization.
 
+The dry-run can also emit a structured expected-goals ledger:
+
+```bash
+uv run python -m tests.generators.compliance_runners.state_transition.preview_strategy \
+  withdrawal_request \
+  --order 2 \
+  --goals-output strategy_goals.json
+```
+
+Generated vectors carry the same stable `strategy_goal_id` in `meta.yaml` when
+they come from the input-profile strategy. The funnel comparison command can
+then compare planned goals against generated vectors:
+
+```bash
+uv run python -m tests.generators.compliance_runners.state_transition.compare_strategy_funnel \
+  --expected-goals strategy_goals.json \
+  --test-dir state_transition_tests/electra_state_transition_evolution
+```
+
+This reports:
+
+```text
+symbolic goals
+  -> completable goals
+  -> materialized vectors
+  -> missing completable goals
+```
+
+The report is useful both for campaign planning and for debugging
+materialization loss. If the dry-run says many goals are completable but only a
+small number are materialized, the missing goal examples identify which
+semantic combinations need materializer, selection, or deduplication work.
+
 ## Generation Modes
 
 This gives two complementary generation modes.

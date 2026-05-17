@@ -1007,12 +1007,17 @@ def operation_meta(
     operation_valid: bool,
     post_state_changed: bool | None,
 ) -> dict[str, Any]:
+    strategy_goal_id = profile.get("strategy_goal_id")
+    strategy_goal_labels = profile.get("strategy_goal_labels", [])
     return {
         "description": "MiniZinc-generated abstract validator-state profile",
         "profile": profile,
         "operation_valid": operation_valid,
         "post_state_changed": post_state_changed,
         "coverage_tags": profile.get("coverage_tags", []),
+        "strategy_goal_id": strategy_goal_id,
+        "strategy_goal_kind": profile.get("strategy_goal_kind"),
+        "strategy_goal_labels": strategy_goal_labels,
         "bls_setting": profile.get("bls_setting", 0),
     }
 

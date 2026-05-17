@@ -4,6 +4,7 @@ from tests.generators.compliance_runners.gen_base import (
     cover,
     CoverageItem,
     enumerate_strategy,
+    make_strategy_goal,
     n_wise_strategy,
     pure,
     require,
@@ -42,3 +43,26 @@ def test_n_wise_strategy_enumerates_aspect_assignments():
         "pair:state.a:A0|state.b:B0",
         "pair:state.a:A1|state.b:B0",
     ]
+
+
+def test_strategy_goal_ids_are_stable():
+    labels = (
+        "queue.pending_partial_withdrawals:FULL",
+        "withdrawal_request_input.request_kind:FULL_EXIT_REQUEST",
+    )
+
+    goal = make_strategy_goal(
+        handler="withdrawal_request",
+        kind="input_profile",
+        labels=labels,
+        completable=True,
+    )
+    same_goal = make_strategy_goal(
+        handler="withdrawal_request",
+        kind="input_profile",
+        labels=labels,
+        completable=False,
+    )
+
+    assert goal.goal_id == same_goal.goal_id
+    assert goal.to_json_data()["labels"] == list(labels)

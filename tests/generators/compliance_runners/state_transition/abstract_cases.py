@@ -7,6 +7,7 @@ from importlib import resources
 from itertools import combinations, product
 from typing import Any
 
+from tests.generators.compliance_runners.gen_base import make_strategy_goal
 from tests.generators.compliance_runners.py_to_mzn import Convertor, get_solutions
 
 from .ontology import guided_operation_intents
@@ -914,6 +915,13 @@ def make_input_profile_case(
         profile.update(input_profiles["validator_state"])
     profile["input_profiles"] = input_profiles
     profile["input_profile_constraints"] = input_profile_constraints(dimension_group)
+    strategy_goal = input_profile_strategy_goal(
+        handler_name,
+        profile["input_profile_constraints"],
+    )
+    profile["strategy_goal_id"] = strategy_goal.goal_id
+    profile["strategy_goal_kind"] = strategy_goal.kind
+    profile["strategy_goal_labels"] = list(strategy_goal.labels)
     profile["coverage_tags"] = [
         f"handler:{handler_name}",
         *[input_profile_tag(dimension) for dimension in dimension_group],
@@ -923,6 +931,23 @@ def make_input_profile_case(
         solution_index,
         profile,
         case_name=input_profile_case_name(dimension_group),
+    )
+
+
+def input_profile_strategy_goal(
+    handler_name: str,
+    constraints: dict[str, dict[str, Any]],
+):
+    return make_strategy_goal(
+        handler=handler_name,
+        kind="input_profile",
+        labels=tuple(
+            f"{profile_model}.{dimension}:{value}"
+            for profile_model, profile_constraints in constraints.items()
+            for dimension, value in profile_constraints.items()
+        ),
+        symbolic=True,
+        completable=True,
     )
 
 
