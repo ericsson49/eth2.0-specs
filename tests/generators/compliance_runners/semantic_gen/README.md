@@ -34,6 +34,66 @@ Examples:
 The generator does not have to construct concrete test vectors immediately.
 It can first reason over aspect assignments and coverage goals.
 
+## Relational Interpretation
+
+The framework can be read as a small relational algebra over abstract test
+case spaces.
+
+An aspect model is a relation:
+
+```text
+AspectModel(columns, constraints)
+```
+
+The columns are semantic dimensions, such as handler, state shape, operation
+shape, output effect, outcome, or trace target. The constraints are predicates
+over those columns, similar to a SQL `WHERE` clause.
+
+Combining aspects is a natural join over shared columns:
+
+```text
+Goal = AspectA ⋈ AspectB ⋈ AspectC
+```
+
+The join succeeds when shared columns agree and fails when constraints are
+inconsistent. In solver terms, the join is constraint conjunction; a non-empty
+join has at least one witness.
+
+Completion can be interpreted the same way. A selected goal is often a partial
+row over coverage columns. Completion joins that partial row with the remaining
+input-aspect relations and selects one compatible witness:
+
+```text
+CompletedInput = SelectedGoal ⋈ RemainingInputAspects
+```
+
+If completion is modelled as an outer join, uncompletable goals can be kept as
+rows with missing witness columns. This makes the funnel explicit:
+
+```text
+planned goals
+  -> completable goals
+  -> selected goals
+  -> materialized vectors
+  -> executed vectors
+  -> observed coverage
+```
+
+This interpretation is useful for optimization:
+
+- projection pushdown: keep rows narrow until more columns are needed
+- selection pushdown: apply handler, fork, or stage constraints early
+- join ordering: join selective aspect relations before broad ones
+- semi-joins: test whether a goal has any completion without building all
+  witnesses
+- anti-joins: report missing planned goals
+- distinct: avoid materializing duplicate goal IDs
+- limit pushdown: enforce suite budgets before expensive materialization
+
+The current Python interpreter is one physical backend for these logical
+plans. MiniZinc, SAT, SMT, randomized samplers, or minimizers can be viewed as
+alternative execution engines for the same relational strategy.
+
 ## Strategy Programs
 
 The `Gen` type is a small nondeterminism-plus-writer monad for semantic
