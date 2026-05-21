@@ -46,8 +46,68 @@ AspectModel(columns, constraints)
 ```
 
 The columns are semantic dimensions, such as handler, state shape, operation
-shape, output effect, outcome, or trace target. The constraints are predicates
-over those columns, similar to a SQL `WHERE` clause.
+shape, output effect, outcome, or trace target. Some dimensions are public
+coverage dimensions, some are materialization dimensions, and some are
+internal helper or control variables. The constraints are predicates over
+those columns, similar to a SQL `WHERE` clause.
+
+This gives each model two public sides:
+
+```text
+coverage side
+  dimensions used to define goals and measure progress
+
+materialization side
+  dimensions and controls used to construct concrete witnesses
+```
+
+A model may also have private/internal columns used only to express
+constraints, joins, or reverse maps. The two public sides can overlap. For
+simple input coverage, a coverage dimension may also be a materialization
+dimension. For guided generation, coverage dimensions may describe desired
+outputs or traces, while materialization dimensions describe the input shape
+that can trigger them.
+
+For example:
+
+```text
+coverage dimensions:
+  intent = withdrawal_request_success
+  outcome = state_changed
+
+materialization dimensions:
+  validator_credentials = ETH1
+  validator_exit_epoch = FAR_FUTURE
+  operation_signature = VALID
+
+control variables:
+  validator_index = i
+  source_address = addr
+
+constraints:
+  operation.pubkey = state.validators[i].pubkey
+  source_address = withdrawal_credentials_to_address(state.validators[i])
+```
+
+Coverage criteria are expressed over coverage dimensions. A model or strategy
+then maps these rows to materialization-side constraints, completes any
+missing materialization dimensions and controls, and sends the completed row
+to the domain materializer:
+
+```text
+CoverageGoal
+  LEFT JOIN CoverageToMaterializationMap
+  LEFT JOIN MaterializationSpace
+  -> CompletedWitness
+```
+
+The guiding rule is:
+
+```text
+Coverage dimensions define what we want.
+Materialization dimensions define what we can build.
+Constraints connect them.
+```
 
 Combining aspects is a natural join over shared columns:
 
@@ -60,11 +120,14 @@ inconsistent. In solver terms, the join is constraint conjunction; a non-empty
 join has at least one witness.
 
 Completion can be interpreted the same way. A selected goal is often a partial
-row over coverage columns. Completion joins that partial row with the remaining
-input-aspect relations and selects one compatible witness:
+row over coverage columns. Completion joins that partial row with mapping and
+materialization relations, then selects one compatible witness:
 
 ```text
-CompletedInput = SelectedGoal ⋈ RemainingInputAspects
+CompletedInput =
+  SelectedGoal
+    ⋈ CoverageToMaterializationMap
+    ⋈ RemainingMaterializationAspects
 ```
 
 If completion is modelled as an outer join, uncompletable goals can be kept as
