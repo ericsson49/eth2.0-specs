@@ -57,10 +57,28 @@ def load_input_profile_strategy_context(handler_name: str) -> InputProfileStrate
                 model=profile_model,
                 name=dimension,
                 values=tuple(values),
+                include_in_coverage=include_in_coverage,
             )
             for (profile_model, dimension), values in grouped_dimensions.items()
+            for include_in_coverage in (
+                dimension_include_in_coverage(raw_dimensions, profile_model, dimension),
+            )
         ),
     )
+
+
+def dimension_include_in_coverage(
+    dimensions: list[dict[str, Any]],
+    profile_model: str,
+    dimension: str,
+) -> bool:
+    for raw_dimension in dimensions:
+        if (
+            raw_dimension["profile_model"] == profile_model
+            and raw_dimension["dimension"] == dimension
+        ):
+            return bool(raw_dimension.get("include_in_coverage", True))
+    return True
 
 
 def input_profile_n_wise_program(

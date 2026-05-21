@@ -16,12 +16,17 @@ class AspectDimension:
     name: str
     values: tuple[Any, ...]
     model: str | None = None
+    include_in_coverage: bool = True
 
     @property
     def qualified_name(self) -> str:
         if self.model is None:
             return self.name
         return f"{self.model}.{self.name}"
+
+    @property
+    def is_coverage_dimension(self) -> bool:
+        return self.include_in_coverage
 
 
 @dataclass(frozen=True)
@@ -195,7 +200,14 @@ def coverage_for_assignments(
     kind: str,
     assignments: Sequence[AspectAssignment],
 ) -> CoverageItem:
-    return CoverageItem(kind=kind, labels=tuple(assignment.label() for assignment in assignments))
+    return CoverageItem(
+        kind=kind,
+        labels=tuple(
+            assignment.label()
+            for assignment in assignments
+            if assignment.dimension.is_coverage_dimension
+        ),
+    )
 
 
 def feasibility_constraint(assignments: Sequence[AspectAssignment]) -> Constraint:

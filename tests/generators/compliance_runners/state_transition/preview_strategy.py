@@ -7,8 +7,7 @@ from pathlib import Path
 from tests.generators.compliance_runners.semantic_gen import enumerate_strategy
 
 from .abstract_cases import HANDLER_NAMES
-from .compare_strategy_funnel import ExpectedGoal
-from .goal_ledger import write_goal_ledger
+from .goal_ledger import ExpectedGoal, write_goal_ledger
 from .strategies import (
     enumerate_input_profile_strategy_cases,
     enumerate_input_profile_strategy_goals,

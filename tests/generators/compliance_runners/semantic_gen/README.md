@@ -51,6 +51,12 @@ coverage dimensions, some are materialization dimensions, and some are
 internal helper or control variables. The constraints are predicates over
 those columns, similar to a SQL `WHERE` clause.
 
+In the generic API this distinction is represented by
+`AspectDimension.include_in_coverage`. Dimensions are included in coverage
+labels by default. Set `include_in_coverage=False` for dimensions that should
+participate in strategy cases without becoming part of the coverage goal
+label.
+
 This gives each model two public sides:
 
 ```text

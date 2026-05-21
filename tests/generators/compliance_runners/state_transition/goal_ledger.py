@@ -2,12 +2,21 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .compare_strategy_funnel import ExpectedGoal
-
 GOAL_LEDGER_FILENAME = "strategy_goals.json"
+
+
+@dataclass(frozen=True)
+class ExpectedGoal:
+    goal_id: str
+    handler: str
+    kind: str
+    labels: tuple[str, ...]
+    symbolic: bool
+    completable: bool
 
 
 def goal_ledger_path(output_dir: Path) -> Path:

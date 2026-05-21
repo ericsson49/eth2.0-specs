@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from . import lean_report
-from .compare_strategy_funnel import ExpectedGoal
-from .goal_ledger import load_expected_goals, write_goal_ledger
+from .goal_ledger import ExpectedGoal, load_expected_goals, write_goal_ledger
 
 
 def test_goal_ledger_round_trip(tmp_path):

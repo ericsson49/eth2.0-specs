@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -9,15 +8,7 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
-
-@dataclass(frozen=True)
-class ExpectedGoal:
-    goal_id: str
-    handler: str
-    kind: str
-    labels: tuple[str, ...]
-    symbolic: bool
-    completable: bool
+from .goal_ledger import ExpectedGoal, load_expected_goals
 
 
 @dataclass(frozen=True)
@@ -64,22 +55,6 @@ def main() -> None:
         realized_goals,
         show_missing=args.show_missing,
     )
-
-
-def load_expected_goals(path: Path) -> list[ExpectedGoal]:
-    data = json.loads(path.read_text())
-    return [
-        ExpectedGoal(
-            goal_id=goal["goal_id"],
-            handler=goal["handler"],
-            kind=goal["kind"],
-            labels=tuple(goal["labels"]),
-            symbolic=bool(goal["symbolic"]),
-            completable=bool(goal["completable"]),
-        )
-        for goal in data["goals"]
-    ]
-
 
 def load_realized_goals(test_dirs: Iterable[Path]) -> list[RealizedGoal]:
     yaml = YAML(typ="safe")

@@ -45,6 +45,34 @@ def test_n_wise_strategy_enumerates_aspect_assignments():
     ]
 
 
+def test_n_wise_strategy_excludes_non_coverage_dimensions_from_coverage_label():
+    dimensions = (
+        AspectDimension(model="state", name="coverage", values=("A",)),
+        AspectDimension(
+            model="state",
+            name="materialization",
+            values=("B",),
+            include_in_coverage=False,
+        ),
+        AspectDimension(
+            model="state",
+            name="control",
+            values=("C",),
+            include_in_coverage=False,
+        ),
+    )
+
+    cases = list(enumerate_strategy(n_wise_strategy(dimensions, 3, coverage_kind="goal")))
+
+    assert len(cases) == 1
+    assert tuple(assignment.label() for assignment in cases[0].value) == (
+        "state.coverage:A",
+        "state.materialization:B",
+        "state.control:C",
+    )
+    assert cases[0].coverage[0].label() == "goal:state.coverage:A"
+
+
 def test_strategy_goal_ids_are_stable():
     labels = (
         "queue.pending_partial_withdrawals:FULL",

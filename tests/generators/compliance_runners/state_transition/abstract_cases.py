@@ -41,6 +41,19 @@ class AbstractStateTransitionCase:
     profile: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class InputProfileCompletionResult:
+    """Completion result for joining selected coverage constraints to input models."""
+
+    completed_profiles: dict[str, dict[str, Any]] | None
+    status: str
+    reason: str | None = None
+
+    @property
+    def matched(self) -> bool:
+        return self.completed_profiles is not None
+
+
 HANDLER_NAMES = (
     "proposer_slashing",
     "attester_slashing",
@@ -748,6 +761,7 @@ def validator_state_input_dimensions(
                 "dimension": dimension,
                 "value": value,
                 "intent": intent,
+                "include_in_coverage": True,
             }
         )
     return dimensions
@@ -789,6 +803,7 @@ def model_dimension_values(
                     "dimension": dimension,
                     "value": value,
                     "intent": intent,
+                    "include_in_coverage": True,
                 }
             )
     return dimensions
@@ -839,6 +854,18 @@ def complete_input_profiles(
     base_profile: dict[str, Any],
     dimension_group: tuple[dict[str, Any], ...],
 ) -> dict[str, dict[str, Any]] | None:
+    return complete_input_profiles_result(
+        handler_name,
+        base_profile,
+        dimension_group,
+    ).completed_profiles
+
+
+def complete_input_profiles_result(
+    handler_name: str,
+    base_profile: dict[str, Any],
+    dimension_group: tuple[dict[str, Any], ...],
+) -> InputProfileCompletionResult:
     constraints = group_profile_constraints(
         (
             dimension["profile_model"],
@@ -858,11 +885,19 @@ def complete_input_profiles(
                     model_constraints,
                 )
                 if completed_profile is None:
-                    return None
+                    return InputProfileCompletionResult(
+                        completed_profiles=None,
+                        status="uncompletable",
+                        reason=f"{profile_model} constraints have no matching row",
+                    )
                 completed_profiles[profile_model] = dict(completed_profile)
                 continue
             if not validator_state_constraints_match_base(base_profile, model_constraints):
-                return None
+                return InputProfileCompletionResult(
+                    completed_profiles=None,
+                    status="uncompletable",
+                    reason="validator_state constraints do not match base profile",
+                )
             completed_profiles[profile_model] = {
                 dimension: base_profile[dimension]
                 for dimension in DEFAULT_PROFILE_PARTITION_DIMENSIONS
@@ -874,10 +909,17 @@ def complete_input_profiles(
             model_constraints,
         )
         if completed_profile is None:
-            return None
+            return InputProfileCompletionResult(
+                completed_profiles=None,
+                status="uncompletable",
+                reason=f"{profile_model} constraints have no matching row",
+            )
         completed_profiles[profile_model] = dict(completed_profile)
 
-    return completed_profiles
+    return InputProfileCompletionResult(
+        completed_profiles=completed_profiles,
+        status="matched",
+    )
 
 
 def profile_models_to_complete(
@@ -905,16 +947,24 @@ def make_input_profile_case(
     profile = dict(base_profile)
     profile["guide_intent"] = input_profile_guide_intent(dimension_group)
     profile["profile_driven"] = is_profile_driven_input_handler(handler_name)
-    input_profiles = complete_input_profiles(handler_name, base_profile, dimension_group)
+    completion = complete_input_profiles_result(handler_name, base_profile, dimension_group)
+    input_profiles = completion.completed_profiles
     if input_profiles is None:
         raise ValueError(f"Cannot complete input profile case: {dimension_group}")
+    profile["input_profile_completion"] = {
+        "status": completion.status,
+        "reason": completion.reason,
+    }
     if "validator_state" in input_profiles:
         profile.update(input_profiles["validator_state"])
     profile["input_profiles"] = input_profiles
     profile["input_profile_constraints"] = input_profile_constraints(dimension_group)
+    profile["input_profile_coverage_constraints"] = input_profile_coverage_constraints(
+        dimension_group
+    )
     strategy_goal = input_profile_strategy_goal(
         handler_name,
-        profile["input_profile_constraints"],
+        profile["input_profile_coverage_constraints"],
     )
     profile["strategy_goal_id"] = strategy_goal.goal_id
     profile["strategy_goal_kind"] = strategy_goal.kind
@@ -964,6 +1014,18 @@ def input_profile_constraints(
             dimension["dimension"]
         ] = dimension["value"]
     return constraints
+
+
+def input_profile_coverage_constraints(
+    dimension_group: tuple[dict[str, Any], ...],
+) -> dict[str, dict[str, Any]]:
+    return input_profile_constraints(
+        tuple(
+            dimension
+            for dimension in dimension_group
+            if dimension.get("include_in_coverage", True)
+        )
+    )
 
 
 def is_materializable_for_handler(profile: dict[str, Any], handler_name: str) -> bool:
