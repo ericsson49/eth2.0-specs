@@ -63,6 +63,26 @@ constraint ((p).slashed) -> ((p).exit_epoch_set);
 constraint ((p).balance_to_effective_balance) in { LT, EQ };
 ```
 
+Typed Python functions with a single boolean return become MiniZinc predicates:
+
+```python
+def is_ready(p: ValidatorStateProfile) -> bool:
+    return not p.slashed or p.exit_epoch_set
+
+
+is_ready(p)
+```
+
+```minizinc
+predicate is_ready(var ValidatorStateProfile: p) =
+  (not ((p).slashed)) \/ ((p).exit_epoch_set);
+
+constraint is_ready(p);
+```
+
+Predicate arguments must be typed, required positional arguments. Predicate
+calls may be used anywhere that the transpiler accepts an expression.
+
 ## Current Mapping
 
 Python `Enum` classes become MiniZinc enums:

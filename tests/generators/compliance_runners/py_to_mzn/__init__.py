@@ -10,18 +10,21 @@ class Convertor(ast.NodeVisitor):
     def __init__(self) -> None:
         self._enums: list[str] = []
         self._records: list[str] = []
+        self._predicates: list[str] = []
         self._vars: list[str] = []
         self._constraints: list[str] = []
 
     def convert(self, code: str) -> str:
         self._enums = []
         self._records = []
+        self._predicates = []
         self._vars = []
         self._constraints = []
         self.visit(ast.parse(code))
         sections = [
             self._enums,
             self._records,
+            self._predicates,
             self._vars,
             self._constraints,
         ]
@@ -38,6 +41,9 @@ class Convertor(ast.NodeVisitor):
             self._enums.append(_convert_enum(node))
         else:
             self._records.append(_convert_record(node))
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._predicates.append(_convert_predicate(node))
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if not isinstance(node.target, ast.Name):
@@ -100,6 +106,44 @@ def _convert_record(node: ast.ClassDef) -> str:
     return f"type {node.name} = record(\n" + "\n".join(fields) + "\n);"
 
 
+def _convert_predicate(node: ast.FunctionDef) -> str:
+    if node.decorator_list:
+        raise ValueError("Predicate functions may not have decorators")
+    if node.returns is not None and _annotation_name(node.returns) != "bool":
+        raise ValueError("Predicate functions must return bool")
+
+    arguments = node.args
+    if (
+        arguments.posonlyargs
+        or arguments.vararg is not None
+        or arguments.kwonlyargs
+        or arguments.kwarg is not None
+        or arguments.defaults
+        or arguments.kw_defaults
+    ):
+        raise ValueError("Predicate functions only support required positional arguments")
+
+    parameters = []
+    for argument in arguments.args:
+        if argument.annotation is None:
+            raise ValueError("Predicate arguments must have type annotations")
+        parameters.append(f"var {_annotation_name(argument.annotation)}: {argument.arg}")
+
+    body = [stmt for stmt in node.body if not _is_docstring(stmt)]
+    if len(body) != 1 or not isinstance(body[0], ast.Return) or body[0].value is None:
+        raise ValueError("Predicate functions must contain a single return statement")
+
+    return f"predicate {node.name}({', '.join(parameters)}) = {_expr(body[0].value)};"
+
+
+def _is_docstring(node: ast.stmt) -> bool:
+    return (
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    )
+
+
 def _is_ellipsis(node: ast.AST | None) -> bool:
     return isinstance(node, ast.Constant) and node.value is Ellipsis
 
@@ -120,6 +164,8 @@ def _expr(node: ast.AST) -> str:
         return f"not ({_expr(node.operand)})"
     if isinstance(node, ast.Compare):
         return _compare(node.left, node.ops, node.comparators)
+    if isinstance(node, ast.Call):
+        return _call(node)
     if isinstance(node, ast.Attribute):
         return _attribute(node)
     if isinstance(node, ast.Name):
@@ -129,6 +175,14 @@ def _expr(node: ast.AST) -> str:
     if isinstance(node, ast.Constant) and isinstance(node.value, bool):
         return "true" if node.value else "false"
     raise ValueError(f"Unsupported expression: {ast.dump(node)}")
+
+
+def _call(node: ast.Call) -> str:
+    if not isinstance(node.func, ast.Name):
+        raise ValueError("Only named predicate calls are supported")
+    if node.keywords:
+        raise ValueError("Predicate calls do not support keyword arguments")
+    return f"{node.func.id}({', '.join(_expr(argument) for argument in node.args)})"
 
 
 def _compare(left: ast.AST, ops: list[ast.cmpop], comparators: list[ast.expr]) -> str:
