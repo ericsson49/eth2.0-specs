@@ -4,10 +4,10 @@ import argparse
 import shutil
 from pathlib import Path
 
-from .goal_ledger import goal_ledger_path, load_expected_goals
+from ..goal_ledger import goal_ledger_path, load_expected_goals
 from .lean_report import format_lean_report, load_or_create_expected_goals
 from .run_suite import generate_from_config, measure_from_config, validate_suites
-from .suite_config import (
+from ..suite_config import (
     default_campaign_output_dir,
     read_yaml,
     resolve_campaign_config_path,

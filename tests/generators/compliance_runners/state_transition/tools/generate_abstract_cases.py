@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
-from .abstract_cases import (
+from ..abstract_cases import (
     enumerate_abstract_cases,
     select_abstract_cases,
     transpile_validator_state_model,

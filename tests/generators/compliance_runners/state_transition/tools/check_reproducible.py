@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .generate_vectors import generate_vectors, normalize_handlers
-from .suite_config import read_yaml, resolve_suite_config_path
+from ..suite_config import read_yaml, resolve_suite_config_path
 
 
 def main() -> None:

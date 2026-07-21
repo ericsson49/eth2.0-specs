@@ -6,15 +6,15 @@ from pathlib import Path
 
 from tests.generators.compliance_runners.semantic_gen import enumerate_strategy
 
-from .abstract_cases import HANDLER_NAMES
-from .goal_ledger import ExpectedGoal, write_goal_ledger
-from .strategies import (
+from ..abstract_cases import HANDLER_NAMES
+from ..goal_ledger import ExpectedGoal, write_goal_ledger
+from ..strategies import (
     enumerate_input_profile_strategy_cases,
     enumerate_input_profile_strategy_goals,
     input_profile_n_wise_program,
     load_input_profile_strategy_context,
 )
-from .strategy_formula import (
+from ..strategy_formula import (
     InputProfileStrategyFormula,
     load_input_profile_formula,
     load_named_input_profile_formula_from_suite,

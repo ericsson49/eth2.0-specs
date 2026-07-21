@@ -12,7 +12,7 @@ from tests.generators.compliance_runners.gen_base.output import dump_test_case_r
 from tests.generators.compliance_runners.gen_base.pytest_support import configure_generator_context
 from tests.infra.dumper import Dumper
 
-from .abstract_cases import (
+from ..abstract_cases import (
     enumerate_input_profile_cases,
     enumerate_materializable_operation_cases,
     enumerate_profile_interaction_cases,
@@ -20,8 +20,8 @@ from .abstract_cases import (
     HANDLER_NAMES,
     select_abstract_cases,
 )
-from .materializers import materialize_case, MATERIALIZED_HANDLER_NAMES, UnsupportedProfileError
-from .ontology import stage_handlers
+from ..materializers import materialize_case, MATERIALIZED_HANDLER_NAMES, UnsupportedProfileError
+from ..ontology import stage_handlers
 
 configure_generator_context()
 

@@ -7,7 +7,7 @@ from typing import Any
 
 from ruamel.yaml import YAML
 
-from .abstract_cases import (
+from ..abstract_cases import (
     complete_profile_model_constraints,
     DEFAULT_PROFILE_PARTITION_DIMENSIONS,
     group_profile_constraints,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from . import lean_report
+from .tools import lean_report
 from .goal_ledger import ExpectedGoal, load_expected_goals, write_goal_ledger
 
 

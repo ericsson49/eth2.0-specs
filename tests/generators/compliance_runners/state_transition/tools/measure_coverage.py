@@ -9,12 +9,12 @@ import pytest
 from coverage import Coverage
 from ruamel.yaml import YAML
 
-from .interaction_coverage import (
+from ..interaction_coverage import (
     add_stage_dimension,
     format_interaction_report,
     interaction_settings,
 )
-from .ontology import (
+from ..ontology import (
     intent_outcomes_by_runner,
     load_test_ontology,
     stage_handlers,

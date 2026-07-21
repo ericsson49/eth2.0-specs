@@ -8,7 +8,7 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
-from .goal_ledger import ExpectedGoal, load_expected_goals
+from ..goal_ledger import ExpectedGoal, load_expected_goals
 
 
 @dataclass(frozen=True)

@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from .compare_strategy_funnel import load_realized_goals, RealizedGoal
-from .goal_ledger import ExpectedGoal, load_expected_goals, write_goal_ledger
-from .strategies import enumerate_input_profile_strategy_goals
-from .strategy_formula import input_profile_formulas_from_generation_configs
-from .suite_config import (
+from ..goal_ledger import ExpectedGoal, load_expected_goals, write_goal_ledger
+from ..strategies import enumerate_input_profile_strategy_goals
+from ..strategy_formula import input_profile_formulas_from_generation_configs
+from ..suite_config import (
     read_yaml,
     resolve_campaign_config_path,
     resolve_suite_config_path,

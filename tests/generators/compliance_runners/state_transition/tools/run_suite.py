@@ -10,12 +10,12 @@ import pytest
 
 from .check_reproducible import check_suite_reproducible
 from .generate_vectors import generate_vectors, normalize_handlers
-from .goal_ledger import goal_ledger_path, load_expected_goals
+from ..goal_ledger import goal_ledger_path, load_expected_goals
 from .lean_report import (
     format_lean_report,
     load_or_create_expected_goals,
 )
-from .suite_config import (
+from ..suite_config import (
     default_suite_coverage_dir,
     default_suite_output_dir,
     read_yaml,
@@ -228,7 +228,7 @@ def measure_from_config(
     args = [
         sys.executable,
         "-m",
-        "tests.generators.compliance_runners.state_transition.measure_coverage",
+        "tests.generators.compliance_runners.state_transition.tools.measure_coverage",
         "--output",
         str(output_dir),
     ]

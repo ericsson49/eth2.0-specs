@@ -7,19 +7,19 @@ from itertools import combinations
 from pathlib import Path
 from typing import Any
 
-from .interaction_coverage import (
+from ..interaction_coverage import (
     add_stage_dimension,
     format_interaction_summary,
     interaction_settings,
 )
 from .measure_coverage import load_case_metadata
-from .ontology import (
+from ..ontology import (
     intent_outcomes_by_runner,
     load_test_ontology,
     stage_handlers,
     target_functions_by_runner,
 )
-from .suite_config import read_yaml, resolve_suite_config_path
+from ..suite_config import read_yaml, resolve_suite_config_path
 
 
 def main() -> None:

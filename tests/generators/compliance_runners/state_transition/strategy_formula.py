@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .generate_vectors import normalize_handlers
+from .tools.generate_vectors import normalize_handlers
 from .suite_config import (
     read_yaml,
     resolve_campaign_config_path,
