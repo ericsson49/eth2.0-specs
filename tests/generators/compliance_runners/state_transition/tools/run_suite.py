@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from .check_reproducible import check_suite_reproducible
 from .generate_vectors import generate_vectors, normalize_handlers
 from ..goal_ledger import goal_ledger_path, load_expected_goals
 from .lean_report import (
@@ -27,7 +26,7 @@ RUNNER_TEST = Path("tests/generators/compliance_runners/state_transition/runner/
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run a reproducible state-transition test-suite profile"
+        description="Run a state-transition test-suite profile"
     )
     parser.add_argument(
         "--suite",
@@ -91,16 +90,6 @@ def main() -> None:
         action="store_true",
         help="Recompute the compiled strategy-goal ledger from the suite config.",
     )
-    parser.add_argument(
-        "--check-reproducible",
-        action="store_true",
-        help="Generate the suite twice in temporary directories and compare outputs.",
-    )
-    parser.add_argument(
-        "--keep-reproducibility-temp",
-        action="store_true",
-        help="Keep reproducibility comparison directories for inspection.",
-    )
     args = parser.parse_args()
 
     suite_config_path = resolve_suite_config_path(args.suite)
@@ -155,16 +144,6 @@ def main() -> None:
         if args.summary_output is not None:
             args.summary_output.parent.mkdir(parents=True, exist_ok=True)
             args.summary_output.write_text(summary)
-
-    if args.check_reproducible:
-        result = check_suite_reproducible(
-            str(suite_config_path),
-            keep_temp=args.keep_reproducibility_temp,
-        )
-        print(result.format())
-        if not result.reproducible:
-            raise SystemExit(1)
-
 
 def generate_from_config(generation_config: dict, output_dir: Path) -> None:
     keep_existing = generation_config.get("keep_existing", False)

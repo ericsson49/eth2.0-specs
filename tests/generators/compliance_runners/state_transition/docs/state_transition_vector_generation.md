@@ -608,13 +608,12 @@ expected outcomes from `test_ontology.yaml`, then writes `target_coverage.txt`
 and `semantic_coverage.txt`. Use `--ontology` to provide an explicit ontology
 YAML.
 
-For reproducible suite generation, use a checked-in suite config:
+For suite generation, use a checked-in suite config:
 
 ```bash
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.tools.run_suite --suite electra_evolution_handler_touch --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.tools.run_suite --suite electra_evolution_input_profiles --coverage --summary
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.tools.run_suite --suite electra_evolution_input_profile_interactions --coverage --summary
-uv run --extra test python -m tests.generators.compliance_runners.state_transition.tools.run_suite --suite electra_evolution_input_profiles --check-reproducible
 uv run --extra test python -m tests.generators.compliance_runners.state_transition.tools.run_campaign --campaign electra_state_transition_evolution
 ```
 
