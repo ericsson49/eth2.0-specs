@@ -7,7 +7,7 @@ from itertools import combinations
 from pathlib import Path
 from typing import Any
 
-from ..interaction_coverage import (
+from .interaction_coverage import (
     add_stage_dimension,
     format_interaction_summary,
     interaction_settings,
