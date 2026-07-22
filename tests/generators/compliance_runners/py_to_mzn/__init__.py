@@ -15,6 +15,7 @@ class Convertor(ast.NodeVisitor):
         self._predicates: list[str] = []
         self._vars: list[str] = []
         self._constraints: list[str] = []
+        self._variable_names: set[str] = set()
 
     def convert(self, code: str, source_path: Path | None = None) -> str:
         self._source_path = source_path.resolve() if source_path is not None else None
@@ -26,6 +27,7 @@ class Convertor(ast.NodeVisitor):
         self._predicates = []
         self._vars = []
         self._constraints = []
+        self._variable_names = set()
         self.visit(ast.parse(code))
         sections = [
             self._enums,
@@ -113,19 +115,26 @@ class Convertor(ast.NodeVisitor):
             raise ValueError("Only top-level named variable declarations are supported")
         if not _is_ellipsis(node.value):
             raise ValueError("Top-level annotated assignments must use ellipsis")
+        self._variable_names.add(node.target.id)
         self._vars.append(f"var {_annotation_name(node.annotation)}: {node.target.id};")
 
     def visit_Expr(self, node: ast.Expr) -> None:
-        self._constraints.append(f"constraint {_expr(node.value)};")
+        self._constraints.append(f"constraint {_expr(node.value, self._variable_names)};")
 
     def visit_If(self, node: ast.If) -> None:
         if node.orelse:
             raise ValueError("MiniZinc conversion does not support else clauses")
-        body = [_expr(stmt.value) for stmt in node.body if isinstance(stmt, ast.Expr)]
+        body = [
+            _expr(stmt.value, self._variable_names)
+            for stmt in node.body
+            if isinstance(stmt, ast.Expr)
+        ]
         if len(body) != len(node.body):
             raise ValueError("If bodies may only contain expressions")
         conclusion = body[0] if len(body) == 1 else "/\\".join(f"({expr})" for expr in body)
-        self._constraints.append(f"constraint ({_expr(node.test)}) -> ({conclusion});")
+        self._constraints.append(
+            f"constraint ({_expr(node.test, self._variable_names)}) -> ({conclusion});"
+        )
 
 
 def get_solutions(model: str) -> Iterable[dict[str, object]]:
@@ -196,7 +205,9 @@ def _convert_predicate(node: ast.FunctionDef) -> str:
     if len(body) != 1 or not isinstance(body[0], ast.Return) or body[0].value is None:
         raise ValueError("Predicate functions must contain a single return statement")
 
-    return f"predicate {node.name}({', '.join(parameters)}) = {_expr(body[0].value)};"
+    variable_names = {argument.arg for argument in arguments.args}
+    predicate = ", ".join(parameters)
+    return f"predicate {node.name}({predicate}) = {_expr(body[0].value, variable_names)};"
 
 
 def _is_docstring(node: ast.stmt) -> bool:
@@ -219,28 +230,31 @@ def _annotation_name(node: ast.AST) -> str:
     raise ValueError(f"Unsupported annotation: {ast.dump(node)}")
 
 
-def _expr(node: ast.AST) -> str:
+def _expr(node: ast.AST, variable_names: set[str] | None = None) -> str:
+    if variable_names is None:
+        variable_names = set()
     if isinstance(node, ast.BoolOp):
         op = "/\\" if isinstance(node.op, ast.And) else "\\/"
-        return op.join(f"({_expr(value)})" for value in node.values)
+        return op.join(f"({_expr(value, variable_names)})" for value in node.values)
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-        return f"not ({_expr(node.operand)})"
+        return f"not ({_expr(node.operand, variable_names)})"
     if isinstance(node, ast.Compare):
-        return _compare(node.left, node.ops, node.comparators)
+        return _compare(node.left, node.ops, node.comparators, variable_names)
     if isinstance(node, ast.Call):
-        return _call(node)
+        return _call(node, variable_names)
     if isinstance(node, ast.Attribute):
-        return _attribute(node)
+        return _attribute(node, variable_names)
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Set):
-        return "{ " + ", ".join(_expr(element) for element in node.elts) + " }"
+        elements = ", ".join(_expr(element, variable_names) for element in node.elts)
+        return "{ " + elements + " }"
     if isinstance(node, ast.Constant) and isinstance(node.value, bool):
         return "true" if node.value else "false"
     raise ValueError(f"Unsupported expression: {ast.dump(node)}")
 
 
-def _call(node: ast.Call) -> str:
+def _call(node: ast.Call, variable_names: set[str]) -> str:
     if isinstance(node.func, ast.Name):
         name = node.func.id
     elif isinstance(node.func, ast.Attribute):
@@ -249,10 +263,15 @@ def _call(node: ast.Call) -> str:
         raise ValueError("Only named predicate calls are supported")
     if node.keywords:
         raise ValueError("Predicate calls do not support keyword arguments")
-    return f"{name}({', '.join(_expr(argument) for argument in node.args)})"
+    return f"{name}({', '.join(_expr(argument, variable_names) for argument in node.args)})"
 
 
-def _compare(left: ast.AST, ops: list[ast.cmpop], comparators: list[ast.expr]) -> str:
+def _compare(
+    left: ast.AST,
+    ops: list[ast.cmpop],
+    comparators: list[ast.expr],
+    variable_names: set[str],
+) -> str:
     if len(ops) != 1 or len(comparators) != 1:
         raise ValueError("Only simple comparisons are supported")
     op = ops[0]
@@ -268,18 +287,18 @@ def _compare(left: ast.AST, ops: list[ast.cmpop], comparators: list[ast.expr]) -
     }.get(type(op))
     if operator is None:
         raise ValueError(f"Unsupported comparison operator: {ast.dump(op)}")
-    right = _expr(comparators[0])
+    right = _expr(comparators[0], variable_names)
     if isinstance(op, ast.In | ast.NotIn):
-        return f"({_expr(left)}) {operator} {right}"
-    return f"({_expr(left)}) {operator} ({right})"
+        return f"({_expr(left, variable_names)}) {operator} {right}"
+    return f"({_expr(left, variable_names)}) {operator} ({right})"
 
 
-def _attribute(node: ast.Attribute) -> str:
+def _attribute(node: ast.Attribute, variable_names: set[str]) -> str:
     if isinstance(node.value, ast.Name):
-        if node.value.id == "p":
+        if node.value.id in variable_names:
             return f"({node.value.id}).{node.attr}"
         return node.attr
-    return f"({_expr(node.value)}).{node.attr}"
+    return f"({_expr(node.value, variable_names)}).{node.attr}"
 
 
 def _normalise_solution(solution: object) -> dict[str, object]:
