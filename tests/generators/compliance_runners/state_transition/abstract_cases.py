@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from importlib import resources
 from itertools import combinations, product
+from pathlib import Path
 from typing import Any
 
 from tests.generators.compliance_runners.py_to_mzn import Convertor, get_solutions
@@ -233,11 +234,13 @@ def load_profile_model(model_name: str) -> str:
 
 
 def transpile_validator_state_model() -> str:
-    return Convertor().convert(load_validator_state_model())
+    model = resources.files(MODEL_PACKAGE).joinpath(VALIDATOR_STATE_MODEL)
+    return Convertor().convert(model.read_text(), source_path=Path(str(model)))
 
 
 def transpile_profile_model(profile_model: str) -> str:
-    return Convertor().convert(load_profile_model(PROFILE_MODELS[profile_model]))
+    model = resources.files(MODEL_PACKAGE).joinpath(PROFILE_MODELS[profile_model])
+    return Convertor().convert(model.read_text(), source_path=Path(str(model)))
 
 
 def solve_validator_state_profiles(limit: int | None = None) -> Iterable[dict[str, Any]]:

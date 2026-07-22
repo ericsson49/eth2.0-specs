@@ -16,7 +16,7 @@ def main() -> None:
     args = parser.parse_args()
 
     convertor = Convertor()
-    output = convertor.convert(args.input.read_text())
+    output = convertor.convert_file(args.input)
 
     if args.output is None:
         print(output, end="")

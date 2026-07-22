@@ -83,6 +83,22 @@ constraint is_ready(p);
 Predicate arguments must be typed, required positional arguments. Predicate
 calls may be used anywhere that the transpiler accepts an expression.
 
+Local Python modules can provide reusable enums, records, and predicates:
+
+```python
+from .shared import ComparisonOp, ValidatorStateProfile, is_ready
+
+
+p: ValidatorStateProfile = ...
+is_ready(p)
+```
+
+When converting a file, the transpiler resolves local absolute and relative
+imports and emits the imported module's declarations into the same MiniZinc
+model. Python runtime imports that do not resolve to a local source file, such
+as `dataclasses` and `enum`, are ignored. Imported declaration aliases are not
+supported.
+
 ## Current Mapping
 
 Python `Enum` classes become MiniZinc enums:

@@ -8,13 +8,19 @@ from pathlib import Path
 
 class Convertor(ast.NodeVisitor):
     def __init__(self) -> None:
+        self._source_path: Path | None = None
+        self._visited_modules: set[Path] = set()
         self._enums: list[str] = []
         self._records: list[str] = []
         self._predicates: list[str] = []
         self._vars: list[str] = []
         self._constraints: list[str] = []
 
-    def convert(self, code: str) -> str:
+    def convert(self, code: str, source_path: Path | None = None) -> str:
+        self._source_path = source_path.resolve() if source_path is not None else None
+        self._visited_modules = set()
+        if self._source_path is not None:
+            self._visited_modules.add(self._source_path)
         self._enums = []
         self._records = []
         self._predicates = []
@@ -30,10 +36,67 @@ class Convertor(ast.NodeVisitor):
         ]
         return "\n\n".join("\n".join(section) for section in sections if section) + "\n"
 
+    def convert_file(self, path: Path) -> str:
+        path = path.resolve()
+        return self.convert(path.read_text(), source_path=path)
+
     def visit_Import(self, node: ast.Import) -> None:
-        return None
+        for alias in node.names:
+            self._visit_imported_module(alias.name, level=0)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if node.module is None:
+            for alias in node.names:
+                self._visit_imported_module(alias.name, level=node.level)
+            return
+        if self._resolve_import(node.module, node.level) is not None and any(
+            alias.asname is not None for alias in node.names
+        ):
+            raise ValueError("Imported declarations may not use aliases")
+        self._visit_imported_module(node.module, level=node.level)
+
+    def _visit_imported_module(self, module: str, level: int) -> None:
+        path = self._resolve_import(module, level)
+        if path is None:
+            if level:
+                raise ValueError(f"Could not resolve relative import: {'.' * level}{module}")
+            return
+        path = path.resolve()
+        if path in self._visited_modules:
+            return
+        self._visited_modules.add(path)
+
+        previous_source_path = self._source_path
+        self._source_path = path
+        try:
+            tree = ast.parse(path.read_text(), filename=str(path))
+            for statement in tree.body:
+                if isinstance(statement, ast.Import | ast.ImportFrom | ast.ClassDef | ast.FunctionDef):
+                    self.visit(statement)
+        finally:
+            self._source_path = previous_source_path
+
+    def _resolve_import(self, module: str, level: int) -> Path | None:
+        if self._source_path is None:
+            return None
+
+        module_parts = module.split(".") if module else []
+        if level:
+            base = self._source_path.parent
+            for _ in range(level - 1):
+                base = base.parent
+            search_roots = [base]
+        else:
+            search_roots = [self._source_path.parent, Path.cwd()]
+
+        for root in search_roots:
+            candidate = root.joinpath(*module_parts)
+            module_file = candidate.with_suffix(".py")
+            if module_file.is_file():
+                return module_file
+            package_file = candidate / "__init__.py"
+            if package_file.is_file():
+                return package_file
         return None
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -178,11 +241,15 @@ def _expr(node: ast.AST) -> str:
 
 
 def _call(node: ast.Call) -> str:
-    if not isinstance(node.func, ast.Name):
+    if isinstance(node.func, ast.Name):
+        name = node.func.id
+    elif isinstance(node.func, ast.Attribute):
+        name = node.func.attr
+    else:
         raise ValueError("Only named predicate calls are supported")
     if node.keywords:
         raise ValueError("Predicate calls do not support keyword arguments")
-    return f"{node.func.id}({', '.join(_expr(argument) for argument in node.args)})"
+    return f"{name}({', '.join(_expr(argument) for argument in node.args)})"
 
 
 def _compare(left: ast.AST, ops: list[ast.cmpop], comparators: list[ast.expr]) -> str:
@@ -268,7 +335,7 @@ def main() -> None:
     parser.add_argument("output", nargs="?", help="MiniZinc output file; stdout if omitted")
     args = parser.parse_args()
 
-    converted = Convertor().convert(Path(args.input).read_text())
+    converted = Convertor().convert_file(Path(args.input))
     if args.output is None:
         print(converted, end="")
     else:
