@@ -6,10 +6,11 @@ conditions, materializes concrete SSZ test vectors, and validates the generated
 vectors against the executable specification.
 
 The generator defaults to the `gloas` fork. The `eip8453` fork currently
-supports `height_events`, `inactivity_updates`, `rewards`, and
-`participation_flag_updates`; provider availability and the handler's runner are
-selected by fork. It supports both the `minimal` and `mainnet` presets. Its test
-cases follow the standard
+supports `height_events`, `inactivity_updates`, `rewards`,
+`participation_flag_updates`, `builder_pending_payments`, and
+`pending_deposits`; provider availability and the handler's runner are selected
+by fork. It supports both the `minimal` and `mainnet` presets. Its test cases
+follow the standard
 [operations test format](../../../formats/operations/README.md), the
 [sanity blocks test format](../../../formats/sanity/blocks.md), the
 [epoch processing test format](../../../formats/epoch_processing/README.md), or
@@ -17,11 +18,13 @@ the [round processing test format](../../../formats/round_processing/README.md),
 depending on the handler.
 
 On EIP-8453, `inactivity_updates`, `rewards`, and `participation_flag_updates`
-generate `round_processing` vectors. On Gloas, `inactivity_updates` and
-`participation_flag_updates` generate `epoch_processing` vectors. Their provider
-names and coverage targets are distinct, and validation uses both the fork and
-runner encoded in each case's directory. A root may contain vectors from both
-forks.
+generate `round_processing` vectors. The EIP-8453 `builder_pending_payments` and
+`pending_deposits` providers generate `epoch_processing` vectors; see their
+[coverage scope](eip8453/README.md#changed-epoch-handlers). On Gloas,
+`inactivity_updates` and `participation_flag_updates` generate
+`epoch_processing` vectors. Their provider names and coverage targets are
+distinct, and validation uses both the fork and runner encoded in each case's
+directory. A root may contain vectors from both forks.
 
 ## Handlers
 
@@ -82,6 +85,8 @@ make comptests kind=state_transition handler=withdrawals profile=smoke
 make comptests kind=state_transition fork=eip8453 handler=height_events profile=smoke
 make comptests kind=state_transition fork=eip8453 handler=inactivity_updates profile=smoke
 make comptests kind=state_transition fork=eip8453 handler=rewards profile=smoke
+make comptests kind=state_transition fork=eip8453 handler=builder_pending_payments profile=smoke
+make comptests kind=state_transition fork=eip8453 handler=pending_deposits profile=smoke
 make comptests kind=state_transition fork=eip8453 handler=participation_flag_updates profile=smoke
 make comptests kind=state_transition preset=mainnet
 make comptests kind=state_transition handler=withdrawals seed=12345

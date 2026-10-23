@@ -60,6 +60,8 @@ def test_fork_support_is_explicit(tmp_path):
     assert "eip8453" not in ALL_PHASES
     assert set(handlers_for("eip8453")) == {
         "height_events",
+        "builder_pending_payments",
+        "pending_deposits",
         "rewards",
         "inactivity_updates",
         "participation_flag_updates",

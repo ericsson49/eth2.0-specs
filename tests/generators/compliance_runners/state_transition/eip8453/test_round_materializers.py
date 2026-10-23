@@ -67,9 +67,15 @@ def test_every_witness_and_full_post_state(preset, selected_handler):
 @pytest.mark.parametrize("preset", ["minimal", "mainnet"])
 def test_all_eip8453_generation_validation_and_replay(tmp_path, preset):
     assert run("all", tmp_path, "smoke", preset, fork="eip8453", seed=124) == 0
-    assert set(discover_handlers(tmp_path)) == {*HANDLERS, "height_events", "rewards"}
+    assert set(discover_handlers(tmp_path)) == {
+        *HANDLERS,
+        "height_events",
+        "rewards",
+        "builder_pending_payments",
+        "pending_deposits",
+    }
     cases = list(gather_tests(tmp_path, kind="state_transition"))
-    assert {case.runner for case in cases} == {"operations", "round_processing"}
+    assert {case.runner for case in cases} == {"operations", "round_processing", "epoch_processing"}
     for selected_handler in HANDLERS:
         assert validate_handler(tmp_path, selected_handler) == 0
     for case in cases:

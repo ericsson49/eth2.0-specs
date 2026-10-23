@@ -72,6 +72,22 @@ ALL_HANDLERS = tuple(
 )
 PROVIDERS = (
     Provider(
+        "eip8453_builder_pending_payments",
+        "eip8453.builder_pending_payments",
+        "epoch_processing",
+        "builder_pending_payments",
+        require_post=True,
+        forks=("eip8453",),
+    ),
+    Provider(
+        "eip8453_pending_deposits",
+        "eip8453.pending_deposits",
+        "epoch_processing",
+        "pending_deposits",
+        require_post=True,
+        forks=("eip8453",),
+    ),
+    Provider(
         "eip8453_rewards",
         "eip8453.rewards",
         "round_processing",
