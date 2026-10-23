@@ -9,7 +9,8 @@ from .typing import (
     SpecForkName,
 )
 
-ALL_EXECUTABLE_SPEC_NAMES = ALL_PHASES
+# Replay-only experimental specs do not opt into inherited test parametrization.
+ALL_EXECUTABLE_SPEC_NAMES = (*ALL_PHASES, SpecForkName("eip8453"))
 
 # import the spec for each fork and preset
 for fork in ALL_EXECUTABLE_SPEC_NAMES:

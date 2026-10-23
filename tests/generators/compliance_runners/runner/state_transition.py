@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .discovery import VectorCase
 
 OPERATION_PROCESSORS = {
+    "height_events": "process_height_events",
     "attestation": "process_attestation",
     "block_header": "process_block_header",
     "builder_deposit_request": "process_builder_deposit_request",

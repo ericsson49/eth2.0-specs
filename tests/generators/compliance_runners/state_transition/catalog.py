@@ -20,6 +20,7 @@ class Provider:
 
 RUNNERS: dict[str, tuple[str, ...]] = {
     "operations": (
+        "height_events",
         "block_header",
         "attestation",
         "attester_slashing",
@@ -67,6 +68,14 @@ ALL_HANDLERS = tuple(
     if handler not in DISABLED_HANDLERS
 )
 PROVIDERS = (
+    Provider(
+        "eip8453_height_events",
+        "eip8453.height_events",
+        "operations",
+        "height_events",
+        require_post=True,
+        forks=("eip8453",),
+    ),
     Provider("block_header", "block_header", "operations", "block_header"),
     Provider("process_operations", "operations", "sanity", "blocks"),
     Provider("process_operations_dispatch", "operations_dispatch", "sanity", "blocks"),

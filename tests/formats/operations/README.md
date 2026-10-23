@@ -57,6 +57,7 @@ Operations:
 | `builder_deposit_request`        | `BuilderDepositRequest`              | `builder_deposit_request`        | `process_builder_deposit_request(state, builder_deposit_request)` (new in Gloas)                  |
 | `builder_exit_request`           | `BuilderExitRequest`                 | `builder_exit_request`           | `process_builder_exit_request(state, builder_exit_request)` (new in Gloas)                        |
 | `randao_commitment_registration` | `SignedRandaoCommitmentRegistration` | `randao_commitment_registration` | `process_randao_commitment_registration(state, randao_commitment_registration)` (new in EIP-8321) |
+| `height_events`                  | None                                 | None                             | `process_height_events(state)` (EIP-8453)                                                         |
 
 Note that `block_header` is not strictly an operation (and is a full `Block`),
 but processed in the same manner, and hence included here.
@@ -69,3 +70,9 @@ boolean field with the verification result.
 
 The resulting state should match the expected `post` state, or if the `post`
 state is left blank, the handler should reject the input operation as invalid.
+
+The EIP-8453 `height_events` handler is state-only: no operation file is
+present. Its `pre` state is the immediate input to `process_height_events`,
+after all block attestations have been processed. The handler does not execute
+the preceding block processors. A `post` state is required for these valid-state
+cases.
