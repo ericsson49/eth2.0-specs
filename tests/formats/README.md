@@ -46,6 +46,7 @@ Test formats:
 - [`epoch_processing`](./epoch_processing/README.md)
 - [`genesis`](./genesis/README.md)
 - [`operations`](./operations/README.md)
+- [`round_processing`](./round_processing/README.md)
 - [`sanity`](./sanity/README.md)
 - [`shuffling`](./shuffling/README.md)
 - [`ssz_static`](./ssz_static/README.md)

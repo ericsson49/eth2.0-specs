@@ -19,8 +19,8 @@ error.
 
 - `discovery.py` identifies cases by preset, fork, runner, handler, and suite.
 - `io.py` reads YAML and compressed SSZ files.
-- `state_transition.py` replays operations, epoch processing, and sanity
-  vectors.
+- `state_transition.py` replays operations, epoch processing, round processing,
+  and sanity vectors.
 - `fork_choice.py` replays fork-choice events and initializes its trusted setup.
 - `test_run.py` provides the shared pytest entry point.
 
@@ -28,9 +28,16 @@ The reusable replay modules do not import generator implementations or pytest
 entry points. Generators share the operation schema in `formats.py` and the
 payload-attestation conversion in `payload_attestation.py` with replay.
 
+The [`round_processing` format](../../../formats/round_processing/README.md)
+replays `inactivity_updates`, `rewards`, and `participation_flag_updates` on
+forks with `process_round`. Each case executes only the selected sub-transition
+and compares the entire post-state. The optional whole-round alternative in the
+format is not used by this replay runner.
+
 Run the runner's regression tests without supplying vector directories:
 
 ```sh
 pytest tests/generators/compliance_runners/runner/test_discovery.py \
-  tests/generators/compliance_runners/runner/test_replay.py
+  tests/generators/compliance_runners/runner/test_replay.py \
+  tests/generators/compliance_runners/runner/test_round_processing.py
 ```

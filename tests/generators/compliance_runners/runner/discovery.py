@@ -10,6 +10,7 @@ from .io import read_yaml
 RUNNER_KINDS = {
     "operations": "state_transition",
     "epoch_processing": "state_transition",
+    "round_processing": "state_transition",
     "sanity": "state_transition",
     "fork_choice": "fork_choice",
     "fork_choice_compliance": "fork_choice",

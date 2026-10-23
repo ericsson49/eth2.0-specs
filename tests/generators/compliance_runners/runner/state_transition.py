@@ -1,4 +1,4 @@
-"""Decode and replay operations, epoch processing, and sanity vectors."""
+"""Decode and replay operations, epoch/round processing, and sanity vectors."""
 
 from __future__ import annotations
 
@@ -55,6 +55,12 @@ EPOCH_PROCESSORS = {
     "historical_summaries_update": "process_historical_summaries_update",
     "sync_committee_updates": "process_sync_committee_updates",
     "proposer_lookahead": "process_proposer_lookahead",
+}
+
+ROUND_PROCESSORS = {
+    "inactivity_updates": "process_inactivity_updates",
+    "rewards": "process_rewards",
+    "participation_flag_updates": "process_participation_flag_updates",
 }
 
 
@@ -117,6 +123,10 @@ def run_test(test_info: VectorCase):
             run_epoch_processing_case(spec, state, handler, expected_post)
             return
 
+        if runner == "round_processing":
+            run_round_processing_case(spec, state, handler, expected_post)
+            return
+
         if runner == "sanity":
             if handler == "blocks":
                 run_sanity_blocks_case(spec, state, test_case["blocks"], expected_post)
@@ -152,6 +162,15 @@ def run_epoch_processing_case(spec, state, handler, expected_post):
     if handler not in EPOCH_PROCESSORS:
         raise ValueError(f"Unsupported epoch_processing handler: {handler}")
     process_fn = getattr(spec, EPOCH_PROCESSORS[handler])
+    run_processing_case(process_fn, state, None, expected_post)
+
+
+def run_round_processing_case(spec, state, handler, expected_post):
+    if handler not in ROUND_PROCESSORS:
+        raise ValueError(f"Unsupported round_processing handler: {handler}")
+    if not hasattr(spec, "process_round"):
+        raise ValueError(f"round_processing is not supported by fork: {spec.fork}")
+    process_fn = getattr(spec, ROUND_PROCESSORS[handler])
     run_processing_case(process_fn, state, None, expected_post)
 
 
