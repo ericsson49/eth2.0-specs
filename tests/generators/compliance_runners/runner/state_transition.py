@@ -10,13 +10,15 @@ from eth_consensus_specs.test.helpers.forks import is_post_gloas
 from eth_consensus_specs.test.helpers.specs import spec_targets
 from eth_consensus_specs.utils import bls
 
-from .formats import OPERATION_INPUTS
+from .formats import OPERATION_INPUTS, operation_type
 from .io import read_ssz_snappy, read_yaml
 
 if TYPE_CHECKING:
     from .discovery import VectorCase
 
 OPERATION_PROCESSORS = {
+    "head_vote": "process_head_vote",
+    "legacy_attester_slashing": "process_legacy_attester_slashing",
     "height_events": "process_height_events",
     "attestation": "process_attestation",
     "block_header": "process_block_header",
@@ -97,7 +99,7 @@ def decode_optional_operation(spec, test_dir: Path, handler: str):
 def decode_operation(spec, test_dir: Path, handler: str):
     if handler in OPERATION_INPUTS:
         input_name, type_name = OPERATION_INPUTS[handler]
-        return decode_file(spec, test_dir, input_name, getattr(spec, type_name))
+        return decode_file(spec, test_dir, input_name, operation_type(spec, type_name))
     raise ValueError(f"Unsupported operations handler: {handler}")
 
 
@@ -142,7 +144,7 @@ def run_test(test_info: VectorCase):
         if handler in OPERATION_PROCESSORS:
             process_fn = getattr(spec, OPERATION_PROCESSORS[handler])
             extra_args = ()
-            if handler == "attestation" and is_post_gloas(spec):
+            if handler == "attestation" and spec.fork != "eip8453" and is_post_gloas(spec):
                 extra_args = (spec.Slot(test_case["meta"]["parent_slot"]),)
             run_processing_case(
                 process_fn,

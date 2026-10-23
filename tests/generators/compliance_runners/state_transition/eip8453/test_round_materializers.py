@@ -70,12 +70,22 @@ def test_all_eip8453_generation_validation_and_replay(tmp_path, preset):
     assert set(discover_handlers(tmp_path)) == {
         *HANDLERS,
         "height_events",
+        "blocks",
+        "head_vote",
+        "attestation",
+        "attester_slashing",
+        "legacy_attester_slashing",
         "rewards",
         "builder_pending_payments",
         "pending_deposits",
     }
     cases = list(gather_tests(tmp_path, kind="state_transition"))
-    assert {case.runner for case in cases} == {"operations", "round_processing", "epoch_processing"}
+    assert {case.runner for case in cases} == {
+        "operations",
+        "round_processing",
+        "epoch_processing",
+        "sanity",
+    }
     for selected_handler in HANDLERS:
         assert validate_handler(tmp_path, selected_handler) == 0
     for case in cases:

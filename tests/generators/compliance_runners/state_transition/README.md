@@ -6,7 +6,8 @@ conditions, materializes concrete SSZ test vectors, and validates the generated
 vectors against the executable specification.
 
 The generator defaults to the `gloas` fork. The `eip8453` fork currently
-supports `height_events`, `inactivity_updates`, `rewards`,
+supports `blocks`, `head_vote`, `attestation`, `attester_slashing`,
+`legacy_attester_slashing`, `height_events`, `inactivity_updates`, `rewards`,
 `participation_flag_updates`, `builder_pending_payments`, and
 `pending_deposits`; provider availability and the handler's runner are selected
 by fork. It supports both the `minimal` and `mainnet` presets. Its test cases
@@ -83,6 +84,11 @@ handler, profile, or output directory with Make variables:
 ```bash
 make comptests kind=state_transition handler=withdrawals profile=smoke
 make comptests kind=state_transition fork=eip8453 handler=height_events profile=smoke
+make comptests kind=state_transition fork=eip8453 handler=blocks profile=smoke
+make comptests kind=state_transition fork=eip8453 handler=head_vote profile=smoke
+make comptests kind=state_transition fork=eip8453 handler=attestation profile=smoke
+make comptests kind=state_transition fork=eip8453 handler=attester_slashing profile=smoke
+make comptests kind=state_transition fork=eip8453 handler=legacy_attester_slashing profile=smoke
 make comptests kind=state_transition fork=eip8453 handler=inactivity_updates profile=smoke
 make comptests kind=state_transition fork=eip8453 handler=rewards profile=smoke
 make comptests kind=state_transition fork=eip8453 handler=builder_pending_payments profile=smoke

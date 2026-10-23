@@ -1,6 +1,8 @@
 """State-transition operation filenames and SSZ types."""
 
 OPERATION_INPUTS = {
+    "head_vote": ("head_vote", "HeadVote"),
+    "legacy_attester_slashing": ("legacy_attester_slashing", "heze.AttesterSlashing"),
     "attestation": ("attestation", "Attestation"),
     "block_header": ("block_header", "BeaconBlock"),
     "builder_deposit_request": ("builder_deposit_request", "BuilderDepositRequest"),
@@ -18,3 +20,10 @@ OPERATION_INPUTS = {
     "withdrawal_request": ("withdrawal_request", "WithdrawalRequest"),
     "sync_aggregate": ("sync_aggregate", "SyncAggregate"),
 }
+
+
+def operation_type(spec, name):
+    """Resolve fork-qualified operation types, including legacy containers."""
+    for component in name.split("."):
+        spec = getattr(spec, component)
+    return spec

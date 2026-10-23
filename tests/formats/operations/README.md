@@ -11,7 +11,8 @@ test handlers.
 description: string    -- Optional description of test case, purely for debugging purposes.
                           Tests should use the directory name of the test case as identifier, not the description.
 bls_setting: int       -- see general test-format spec.
-parent_slot: int       -- Only for the `attestation` handler in Gloas and later.
+parent_slot: int       -- Only for the `attestation` handler in Gloas and forks retaining that signature.
+                          Not used in EIP-8453.
                           The slot of the parent block, an extra input to `process_attestation`.
 ```
 
@@ -38,7 +39,7 @@ Operations:
 
 | *`operation-name`*               | *`operation-object`*                 | *`input name`*                   | *`processing call`*                                                                               |
 | -------------------------------- | ------------------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `attestation`                    | `Attestation`                        | `attestation`                    | `process_attestation(state, attestation)` (`parent_slot` added in Gloas)                          |
+| `attestation`                    | `Attestation`                        | `attestation`                    | `process_attestation(state, attestation)` (`parent_slot` added in Gloas, removed in EIP-8453)     |
 | `attester_slashing`              | `AttesterSlashing`                   | `attester_slashing`              | `process_attester_slashing(state, attester_slashing)`                                             |
 | `block_header`                   | `BeaconBlock`                        | **`block`**                      | `process_block_header(state, block)`                                                              |
 | `deposit`                        | `Deposit`                            | `deposit`                        | `process_deposit(state, deposit)` (removed in Fulu)                                               |
@@ -58,6 +59,8 @@ Operations:
 | `builder_exit_request`           | `BuilderExitRequest`                 | `builder_exit_request`           | `process_builder_exit_request(state, builder_exit_request)` (new in Gloas)                        |
 | `randao_commitment_registration` | `SignedRandaoCommitmentRegistration` | `randao_commitment_registration` | `process_randao_commitment_registration(state, randao_commitment_registration)` (new in EIP-8321) |
 | `height_events`                  | None                                 | None                             | `process_height_events(state)` (EIP-8453)                                                         |
+| `head_vote`                      | `HeadVote`                           | `head_vote`                      | `process_head_vote(state, head_vote)` (EIP-8453)                                                  |
+| `legacy_attester_slashing`       | `heze.AttesterSlashing`              | `legacy_attester_slashing`       | `process_legacy_attester_slashing(state, legacy_attester_slashing)` (EIP-8453)                    |
 
 Note that `block_header` is not strictly an operation (and is a full `Block`),
 but processed in the same manner, and hence included here.
@@ -76,3 +79,7 @@ present. Its `pre` state is the immediate input to `process_height_events`,
 after all block attestations have been processed. The handler does not execute
 the preceding block processors. A `post` state is required for these valid-state
 cases.
+
+Both `attestation` and `attester_slashing` use the EIP-8453 containers;
+`legacy_attester_slashing` uses the pre-fork Heze container and beacon-attester
+signature domain. These signed-operation vectors set `bls_setting: 1`.

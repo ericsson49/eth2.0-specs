@@ -60,6 +60,11 @@ def test_fork_support_is_explicit(tmp_path):
     assert "eip8453" not in ALL_PHASES
     assert set(handlers_for("eip8453")) == {
         "height_events",
+        "operations",
+        "head_vote",
+        "attestation",
+        "attester_slashing",
+        "legacy_attester_slashing",
         "builder_pending_payments",
         "pending_deposits",
         "rewards",
@@ -67,7 +72,7 @@ def test_fork_support_is_explicit(tmp_path):
         "participation_flag_updates",
     }
     assert "height_events" not in handlers_for("gloas")
-    for fork, handler in (("gloas", "height_events"), ("eip8453", "attestation")):
+    for fork, handler in (("gloas", "height_events"), ("eip8453", "block_header")):
         with pytest.raises(ValueError, match="unsupported generation handler"):
             run(handler, tmp_path, "smoke", fork=fork)
     with pytest.raises(ValueError, match="does not support fork"):

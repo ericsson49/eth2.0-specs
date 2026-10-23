@@ -6,7 +6,8 @@ import pytest
 
 from tests.generators.compliance_runners.state_transition.provider import load_provider
 
-from . import provider as runner
+from . import conftest as generator_options, provider as runner, run as cli
+from .catalog import ALL_HANDLERS, FORKS, handlers_for
 from .provider import materialize_handler, PROFILES, PROVIDERS
 
 
@@ -15,6 +16,42 @@ def test_all_is_not_a_generation_profile(tmp_path):
     assert "max" in PROFILES
     with pytest.raises(ValueError, match="unknown profile: all"):
         materialize_handler("blocks", "all", tmp_path)
+
+
+def test_parser_choices_include_handlers_enabled_on_any_fork():
+    assert set(ALL_HANDLERS) == {handler for fork in FORKS for handler in handlers_for(fork)}
+    assert "blocks" in ALL_HANDLERS
+    assert "blocks" in handlers_for("eip8453")
+    assert "blocks" not in handlers_for("gloas")
+    assert "payload_attestation" not in ALL_HANDLERS
+
+
+def test_cli_accepts_eip8453_blocks(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run",
+            "--fork",
+            "eip8453",
+            "--handler",
+            "blocks",
+            "--profile",
+            "exceptional",
+            "--comptests-output",
+            str(tmp_path),
+        ],
+    )
+    calls = []
+    monkeypatch.setattr(cli, "run", lambda *args: calls.append(args) or 0)
+    assert cli.main() == 0
+    assert calls == [("blocks", tmp_path, "exceptional", "minimal", None, "eip8453")]
+
+
+def test_pytest_parser_accepts_eip8453_blocks():
+    parser = pytest.Parser(_ispytest=True)
+    generator_options.pytest_addoption(parser)
+    args = parser.parse(["--fork", "eip8453", "--handler", "blocks"])
+    assert (args.fork, args.handler) == ("eip8453", "blocks")
 
 
 def test_catalog_providers_expose_all_public_profiles():

@@ -20,6 +20,8 @@ class Provider:
 
 RUNNERS: dict[str, tuple[str, ...]] = {
     "operations": (
+        "head_vote",
+        "legacy_attester_slashing",
         "height_events",
         "block_header",
         "attestation",
@@ -60,17 +62,34 @@ RUNNERS: dict[str, tuple[str, ...]] = {
     "round_processing": ("inactivity_updates", "rewards", "participation_flag_updates"),
     "sanity": ("blocks", "slots"),
 }
-# Temporarily excluded until its fork-epoch setup is resolved.
+# Disabled by default; EIP-8453 has its own working sanity/blocks provider.
 DISABLED_HANDLERS = {"blocks", "payload_attestation"}
-ALL_HANDLERS = tuple(
-    dict.fromkeys(
-        handler
-        for handlers in RUNNERS.values()
-        for handler in handlers
-        if handler not in DISABLED_HANDLERS
-    )
-)
 PROVIDERS = (
+    Provider("eip8453_operations", "eip8453.operations", "sanity", "blocks", forks=("eip8453",)),
+    Provider(
+        "eip8453_head_vote", "eip8453.head_vote", "operations", "head_vote", forks=("eip8453",)
+    ),
+    Provider(
+        "eip8453_attestation",
+        "eip8453.attestation",
+        "operations",
+        "attestation",
+        forks=("eip8453",),
+    ),
+    Provider(
+        "eip8453_attester_slashing",
+        "eip8453.attester_slashing",
+        "operations",
+        "attester_slashing",
+        forks=("eip8453",),
+    ),
+    Provider(
+        "eip8453_legacy_attester_slashing",
+        "eip8453.legacy_attester_slashing",
+        "operations",
+        "legacy_attester_slashing",
+        forks=("eip8453",),
+    ),
     Provider(
         "eip8453_builder_pending_payments",
         "eip8453.builder_pending_payments",
@@ -312,10 +331,18 @@ def handlers_for(fork: str) -> tuple[str, ...]:
         raise ValueError(f"unsupported generation fork: {fork}")
     return tuple(
         dict.fromkeys(
-            p.handler for p in PROVIDERS if fork in p.forks and p.handler not in DISABLED_HANDLERS
+            p.handler
+            for p in PROVIDERS
+            if fork in p.forks
+            and (
+                p.handler not in DISABLED_HANDLERS or (fork == "eip8453" and p.handler == "blocks")
+            )
         )
     )
 
 
 # Legacy consumers (including Gloas-only evaluation) retain the default fork scope.
 HANDLERS = handlers_for("gloas")
+
+# CLI choices include every enabled handler; execution still checks its fork.
+ALL_HANDLERS = tuple(dict.fromkeys(handler for fork in FORKS for handler in handlers_for(fork)))

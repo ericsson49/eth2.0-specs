@@ -2,6 +2,10 @@
 
 from ruamel.yaml import YAML
 
+from tests.generators.compliance_runners.runner.formats import (
+    operation_type as resolve_operation_type,
+)
+
 from .evaluation.coverage_dsl import Context, NA
 from .provider import Check, check_dimensions, decode
 
@@ -57,7 +61,8 @@ def target_validator(target, *, operation_name=None, operation_type=None, spec, 
             operation = YAML(typ="safe").load((case_dir / f"{operation_name}.yaml").read_text())
         else:
             operation = decode(
-                case_dir / f"{operation_name}.ssz_snappy", getattr(case_spec, operation_type)
+                case_dir / f"{operation_name}.ssz_snappy",
+                resolve_operation_type(case_spec, operation_type),
             )
         post_path = case_dir / "post.ssz_snappy"
         post_exists = post_path.exists()

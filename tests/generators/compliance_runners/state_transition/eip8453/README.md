@@ -134,3 +134,49 @@ combinations and complete post-states on both presets, independent recovery,
 all-profile coverage, and serialized smoke generation/validation/replay. It also
 checks the deposit processing cap, empty queue, and changed epoch dispatch that
 excludes round work.
+
+## Changed block operations
+
+The `eip8453_operations` provider uses the `sanity/blocks` format to exercise
+`process_operations` through the full block transition. The individual-operation
+providers use the `operations` format. These vectors use real BLS signatures and
+`bls_setting: 1`. `height_events` also has a state-only provider. The additions
+cover the changed operation dispatch and its new or rewritten callees:
+
+| Handler                    | Coverage scope                                                                                                                                                                                                                                                                               |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `blocks`                   | Empty body; head-vote support-bit length mismatch in either direction; supported vote must be at the preceding slot; unsupported older vote; head-vote count at/over the limit; legacy-slashing count over the limit; actual dispatch of each changed operation and a mixed body.            |
+| `head_vote`                | Genesis, previous/current epoch, too-old and too-early votes; matching, skipped-slot and mismatching roots; zero/one/multiple seats; prior participation; valid and invalid signatures. Multiple-seat fixtures include a duplicate validator in distinct seats.                              |
+| `attestation`              | Current target, older target with pending finality, no finality, unknown target, malformed data, future/stale epoch, mismatched aggregation length, empty aggregate, wrong signature domain; crossed with timeout and existing progress/finality participation.                              |
+| `attester_slashing`        | Double target vote; conflicts with the other finality pair in both directions; timeout conflict; identical/nonconflicting data and two timeouts; crossed with malformed indices, wrong signature domain on either side, disjoint/already-slashed intersections, and one/multiple validators. |
+| `legacy_attester_slashing` | Legacy double/surround votes, reversed surround, identical/nonconflicting data; the same index/signature/intersection axes, using Heze containers and the beacon-attester domain.                                                                                                            |
+
+`attester_slashing` retains its processor body but is included because its
+slashability predicates, input containers, and signing domain change. Unchanged
+block handlers are not re-registered merely because they call shared helpers.
+
+Each target describes a finite local-handler model. `smoke` covers every factor
+value; `normal` exhausts modeled accepted cases, `exceptional` exhausts modeled
+rejected cases, and `standard`/`max` exhaust both. Observers derive input facts
+from pre-state and operation, independently of claimed dimensions and processor
+execution. The `accepted` observation uses post-state presence, and assertion
+validation checks that it agrees with predicted input validity. Pass the actual
+post-state to direct `recover` calls for accepted cases.
+
+Materializers are deterministic. Attestations use eight validators, all
+committees, and uniform existing participation, so heterogeneous participation
+and larger committee/aggregate limits are not claimed as covered. The head-vote
+empty-voter case uses either the empty BLS aggregate encoding or a zero
+signature; emptiness rejects regardless. Slashing targets cover representative
+malformed indices, not all index-length limits. Fixtures test local behavior
+rather than full-chain reachability. Operation-list limits unchanged by EIP-8453
+remain in the existing Gloas target; the body target does not enumerate every
+ordering or combination.
+
+`test_operation_providers.py` checks every modeled input on both presets,
+independent post-state effects (reusing only inherited slashing effects),
+coverage recovery, each profile's obligations, disk generation/replay, post-file
+removal, and Gloas/EIP-8453 coexistence. A dispatch regression checks that block
+processing runs the changed operations before exactly one height-events call.
+The `sanity/blocks` vectors include height events and the surrounding block
+processors.

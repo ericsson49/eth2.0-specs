@@ -26,6 +26,8 @@ if TYPE_CHECKING:
 
 
 PROCESSORS = {
+    "head_vote": "process_head_vote",
+    "legacy_attester_slashing": "process_legacy_attester_slashing",
     "block_header": "process_block_header",
     "blocks": "process_operations",
     "slots": "process_slot",
@@ -167,7 +169,7 @@ def run_case(case: VectorCase, processor) -> None:
             return
 
         extra_args = ()
-        if case.handler == "attestation" and is_post_gloas(spec):
+        if case.handler == "attestation" and spec.fork != "eip8453" and is_post_gloas(spec):
             extra_args = (spec.Slot(test_case["meta"]["parent_slot"]),)
         replay.run_processing_case(
             processor,
