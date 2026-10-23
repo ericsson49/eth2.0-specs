@@ -2,7 +2,10 @@
 
 `height_events` is registered under `operations`. The round targets below have
 materializers registered under `round_processing` for EIP-8453. The Gloas
-providers with the same handler names remain under `epoch_processing`.
+providers for inactivity and participation flag updates remain under
+`epoch_processing`. The new `rewards` provider is described in
+[rewards/README.md](rewards/README.md); it uses a multi-validator record and
+fixture rather than the single-validator contract below.
 
 | Target module                       | Spec function                        | Record scope           |
 | ----------------------------------- | ------------------------------------ | ---------------------- |

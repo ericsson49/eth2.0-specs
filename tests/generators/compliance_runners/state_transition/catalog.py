@@ -57,7 +57,7 @@ RUNNERS: dict[str, tuple[str, ...]] = {
         "rewards_and_penalties",
         "proposer_lookahead",
     ),
-    "round_processing": ("inactivity_updates", "participation_flag_updates"),
+    "round_processing": ("inactivity_updates", "rewards", "participation_flag_updates"),
     "sanity": ("blocks", "slots"),
 }
 # Temporarily excluded until its fork-epoch setup is resolved.
@@ -71,6 +71,14 @@ ALL_HANDLERS = tuple(
     )
 )
 PROVIDERS = (
+    Provider(
+        "eip8453_rewards",
+        "eip8453.rewards",
+        "round_processing",
+        "rewards",
+        require_post=True,
+        forks=("eip8453",),
+    ),
     Provider(
         "eip8453_inactivity_updates",
         "eip8453.inactivity_updates",

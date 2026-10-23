@@ -6,7 +6,7 @@ conditions, materializes concrete SSZ test vectors, and validates the generated
 vectors against the executable specification.
 
 The generator defaults to the `gloas` fork. The `eip8453` fork currently
-supports `height_events`, `inactivity_updates`, and
+supports `height_events`, `inactivity_updates`, `rewards`, and
 `participation_flag_updates`; provider availability and the handler's runner are
 selected by fork. It supports both the `minimal` and `mainnet` presets. Its test
 cases follow the standard
@@ -16,11 +16,12 @@ cases follow the standard
 the [round processing test format](../../../formats/round_processing/README.md),
 depending on the handler.
 
-On EIP-8453, `inactivity_updates` and `participation_flag_updates` generate
-`round_processing` vectors. On Gloas, the same handler names generate
-`epoch_processing` vectors. Their provider names and coverage targets are
-distinct, and validation uses both the fork and runner encoded in each case's
-directory. A root may contain vectors from both forks.
+On EIP-8453, `inactivity_updates`, `rewards`, and `participation_flag_updates`
+generate `round_processing` vectors. On Gloas, `inactivity_updates` and
+`participation_flag_updates` generate `epoch_processing` vectors. Their provider
+names and coverage targets are distinct, and validation uses both the fork and
+runner encoded in each case's directory. A root may contain vectors from both
+forks.
 
 ## Handlers
 
@@ -80,6 +81,7 @@ handler, profile, or output directory with Make variables:
 make comptests kind=state_transition handler=withdrawals profile=smoke
 make comptests kind=state_transition fork=eip8453 handler=height_events profile=smoke
 make comptests kind=state_transition fork=eip8453 handler=inactivity_updates profile=smoke
+make comptests kind=state_transition fork=eip8453 handler=rewards profile=smoke
 make comptests kind=state_transition fork=eip8453 handler=participation_flag_updates profile=smoke
 make comptests kind=state_transition preset=mainnet
 make comptests kind=state_transition handler=withdrawals seed=12345
