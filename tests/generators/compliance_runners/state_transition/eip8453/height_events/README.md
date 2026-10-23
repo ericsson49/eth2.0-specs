@@ -48,10 +48,10 @@ interactions. `max` covers all feasible combinations. No exceptional profile is
 declared: this handler has no rejecting assertion on valid pre-states.
 
 The registered `HeightEventsMaterializer` accepts complete coverage assignments
-and emits SSZ `pre`/`post` parts with claimed dimensions. It uses three equal-weight
-validators to realize quorum boundaries, capped inactivity scores for zero total
-weight, and ordered pending entries to realize pruning and window eviction.
-Materialization is deterministic. The default fork is `eip8453`; pass
+and emits SSZ `pre`/`post` parts with claimed dimensions. It uses three
+equal-weight validators to realize quorum boundaries, capped inactivity scores
+for zero total weight, and ordered pending entries to realize pruning and window
+eviction. Materialization is deterministic. The default fork is `eip8453`; pass
 `preset_name="mainnet"` when writing mainnet vectors with `materialize_reps`.
 
 Generate and replay through the standard infrastructure:
@@ -63,12 +63,12 @@ uv run pytest tests/generators/compliance_runners/runner/test_run.py \
   --kind=state_transition --test-dir /tmp/eip8453-comptests
 ```
 
-The provider writes `operations/height_events` vectors and requires a post-state.
-`fork=eip8453` with `handler=all` selects only registered EIP-8453 providers.
-Semantic scoring and code-coverage CLI integration remain separate work.
+The provider writes `operations/height_events` vectors and requires a
+post-state. `fork=eip8453` with `handler=all` selects only registered EIP-8453
+providers. Semantic scoring and code-coverage CLI integration remain separate
+work.
 
-Tests check every feasible
-assignment against the observer and expected post-state on both presets, plus
-SSZ round trips for the smoke profile. Pending-entry-specific quorum
-boundary coverage, weight-distribution coverage, and cross-block sequencing are
-not claimed by this initial target.
+Tests check every feasible assignment against the observer and expected
+post-state on both presets, plus SSZ round trips for the smoke profile.
+Pending-entry-specific quorum boundary coverage, weight-distribution coverage,
+and cross-block sequencing are not claimed by this initial target.
