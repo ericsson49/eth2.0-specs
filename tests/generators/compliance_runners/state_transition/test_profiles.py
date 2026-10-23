@@ -46,7 +46,7 @@ def test_unknown_provider_fails_explicitly():
 
 
 def test_materialization_runner_consumes_case_lists(monkeypatch, tmp_path):
-    selected_spec = object()
+    selected_spec = SimpleNamespace(fork="gloas")
     cases = [{"value": 1}, {"value": 2}]
 
     def build(name, *, spec):
@@ -58,10 +58,11 @@ def test_materialization_runner_consumes_case_lists(monkeypatch, tmp_path):
         runner_name = "epoch_processing"
         handler_name = "example"
         fork_name = "gloas"
+        preset_name = "minimal"
 
         def __init__(self, spec, **kwargs):
             assert spec is selected_spec
-            assert kwargs == {"preset_name": "minimal", "seed": 124}
+            assert kwargs == {"fork_name": "gloas", "preset_name": "minimal", "seed": 124}
 
         def materialize_reps(self, directory, representatives, **kwargs):
             assert directory == tmp_path
@@ -74,7 +75,7 @@ def test_materialization_runner_consumes_case_lists(monkeypatch, tmp_path):
         MATERIALIZER=Materializer,
         validate_case=object(),
     )
-    monkeypatch.setattr(runner, "load_provider", lambda *args: module)
+    monkeypatch.setattr(runner, "load_provider", lambda *args, **kwargs: module)
     provider = runner.Provider("example", "example", "epoch_processing", "example")
     assert runner._materialize_provider(
         provider,

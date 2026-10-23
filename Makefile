@@ -259,6 +259,7 @@ comptests: build
 else ifeq ($(COMPTESTS_KIND),state_transition)
 
 # Generate compliance tests (state transition).
+comptests: STATE_TRANSITION_FORK := $(if $(fork),$(fork),gloas)
 comptests: MAYBE_HANDLER := $(if $(handler),--handler $(handler))
 comptests: MAYBE_PROFILE := $(if $(profile),--profile $(profile))
 comptests: MAYBE_SEED := $(if $(seed),--seed $(seed))
@@ -273,6 +274,7 @@ comptests: build
 		$(MAYBE_PROFILE) \
 		$(MAYBE_SEED) \
 		--preset $(PRESET) \
+		--fork $(STATE_TRANSITION_FORK) \
 		$(CURDIR)/tests/generators/compliance_runners/state_transition/generate_comptests.py
 
 else

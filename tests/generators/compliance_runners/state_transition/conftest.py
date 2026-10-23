@@ -4,11 +4,16 @@ from pathlib import Path
 
 import pytest
 
-from tests.generators.compliance_runners.state_transition.catalog import HANDLERS
+from tests.generators.compliance_runners.state_transition.catalog import (
+    ALL_HANDLERS,
+    FORKS,
+    handlers_for,
+)
 from tests.generators.compliance_runners.state_transition.provider import PROFILES
 
 
 def pytest_addoption(parser):
+    parser.addoption("--fork", choices=FORKS, default="gloas")
     parser.addoption(
         "--comptests-output",
         type=Path,
@@ -17,7 +22,7 @@ def pytest_addoption(parser):
     )
     parser.addoption(
         "--handler",
-        choices=(*HANDLERS, "all"),
+        choices=(*ALL_HANDLERS, "all"),
         default="all",
         help="State-transition handler to generate",
     )
@@ -54,7 +59,10 @@ def pytest_generate_tests(metafunc):
         return
 
     selected_handler = metafunc.config.getoption("--handler")
-    handlers = HANDLERS if selected_handler == "all" else (selected_handler,)
+    available = handlers_for(metafunc.config.getoption("--fork"))
+    if selected_handler != "all" and selected_handler not in available:
+        raise pytest.UsageError(f"unsupported handler for selected fork: {selected_handler}")
+    handlers = available if selected_handler == "all" else (selected_handler,)
     metafunc.parametrize("handler", handlers, ids=handlers)
 
 
@@ -71,3 +79,8 @@ def preset(request) -> str:
 @pytest.fixture
 def seed(request) -> int | None:
     return request.config.getoption("--seed")
+
+
+@pytest.fixture
+def fork(request) -> str:
+    return request.config.getoption("--fork")

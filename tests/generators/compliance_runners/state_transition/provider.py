@@ -10,9 +10,10 @@ from typing import Any, TYPE_CHECKING
 import snappy
 from ruamel.yaml import YAML
 
+from eth_consensus_specs.test.helpers.specs import spec_targets
 from tests.generators.compliance_runners.runner.formats import OPERATION_INPUTS
 
-from .catalog import HANDLERS, Provider, PROVIDERS, RUNNERS
+from .catalog import ALL_HANDLERS, handlers_for, Provider, PROVIDERS, RUNNERS
 from .materializer import SUITE_NAME
 
 if TYPE_CHECKING:
@@ -51,7 +52,9 @@ def load_provider(name: str, *, spec=None) -> LoadedProvider:
     materializer_module = provider.materializer_module or provider.module
     materializer = import_module(f".{materializer_module}.materializer", __package__).MATERIALIZER
     if spec is None:
-        spec = import_module("eth_consensus_specs.gloas.minimal")
+        spec = import_module(f"eth_consensus_specs.{provider.forks[0]}.minimal")
+    if spec.fork not in provider.forks:
+        raise ValueError(f"provider {provider.name} does not support fork {spec.fork}")
     if provider.runner == "sanity":
         operation_name, operation_type = (
             ("blocks_0", "SignedBeaconBlock") if provider.handler == "blocks" else ("slots", None)
@@ -98,11 +101,11 @@ RUNNER_BY_HANDLER = {
 
 
 def _spec_for_case(case_dir: Path) -> Any:
-    """Load the preset encoded by a generated case's directory layout."""
+    """Load the fork and preset encoded by a generated case's directory layout."""
     for parent in case_dir.parents:
-        if parent.name in ("minimal", "mainnet"):
-            return import_module(f"eth_consensus_specs.gloas.{parent.name}")
-    raise ValueError(f"could not determine preset for case: {case_dir}")
+        if parent.parent.name in spec_targets and parent.name in spec_targets[parent.parent.name]:
+            return spec_targets[parent.parent.name][parent.name]
+    raise ValueError(f"could not determine fork and preset for case: {case_dir}")
 
 
 def validate_cases(
@@ -124,8 +127,13 @@ def validate_cases(
     total_mm = total_err = 0
     for case_dir in case_dirs:
         case_spec = _spec_for_case(case_dir)
+        supported = {p.name for p in providers_for(handler, case_spec.fork)}
         dimensions = _YAML.load((case_dir / "dimensions.yaml").read_text())
         test_provider = dimensions.get("test_provider")
+        if test_provider not in supported:
+            raise ValueError(
+                f"provider {test_provider!r} does not support {case_spec.fork}/{handler}"
+            )
         if isinstance(validate_case, dict):
             if test_provider not in validate_case:
                 print(f"{case_dir.name}: FAIL  [unknown test provider {test_provider!r}]")
@@ -159,7 +167,7 @@ def validate_cases(
 def discover_handlers(test_dir: Path) -> list[str]:
     candidates = []
     for phase in ("operations", "epoch_processing", "sanity"):
-        for handler in HANDLERS:
+        for handler in ALL_HANDLERS:
             if list(test_dir.glob(f"**/{phase}/{handler}/**/case_*")):
                 candidates.append((phase, handler))
     if not candidates:
@@ -167,11 +175,13 @@ def discover_handlers(test_dir: Path) -> list[str]:
     return [handler for _, handler in candidates]
 
 
-def providers_for(handler: str) -> tuple[Provider, ...]:
+def providers_for(handler: str, fork: str = "gloas") -> tuple[Provider, ...]:
     """Return all providers registered for ``handler``."""
-    providers = tuple(provider for provider in PROVIDERS if provider.handler == handler)
+    providers = tuple(
+        provider for provider in PROVIDERS if provider.handler == handler and fork in provider.forks
+    )
     if not providers:
-        raise ValueError(f"no providers registered for handler: {handler}")
+        raise ValueError(f"no providers registered for {fork}/{handler}")
     return providers
 
 
@@ -185,11 +195,15 @@ def _materialize_provider(
     preset_name: str,
     seed: int,
 ) -> tuple[Any, int, str]:
-    module = load_provider(provider.name)
+    module = load_provider(provider.name, spec=spec)
     chosen = module.build_profile(profile, spec=spec)
     reps = [SimpleNamespace(**record) for record in chosen]
-    materializer = module.MATERIALIZER(spec, preset_name=preset_name, seed=seed)
+    materializer = module.MATERIALIZER(
+        spec, fork_name=spec.fork, preset_name=preset_name, seed=seed
+    )
     materializer.test_provider = provider.name
+    if materializer.fork_name != spec.fork or materializer.preset_name != preset_name:
+        raise ValueError(f"materializer fork/preset mismatch: {provider.name}")
     if materializer.runner_name != provider.runner or materializer.handler_name != provider.handler:
         raise ValueError(f"provider metadata does not match materializer: {provider.name}")
     generated = materializer.materialize_reps(
@@ -211,7 +225,9 @@ def materialize_handler(
         raise ValueError(f"unknown profile: {profile}")
     if spec is None:
         spec = import_module(f"eth_consensus_specs.gloas.{preset_name}")
-    providers = providers_for(handler)
+    if preset_name != spec.config.PRESET_BASE:
+        raise ValueError("selected spec does not match preset_name")
+    providers = providers_for(handler, spec.fork)
     case_offset = 0
     for provider_index, provider in enumerate(providers):
         print(f"Materializing '{profile}' test vectors for '{handler}' from '{provider.name}'")
@@ -246,7 +262,9 @@ def validate_handler(
 ) -> int:
     """Validate all providers registered for ``handler``."""
     validators = {}
-    for provider in providers_for(handler):
+    for provider in PROVIDERS:
+        if provider.handler != handler:
+            continue
         module = load_provider(provider.name)
         validators[provider.name] = module.validate_case
     return validate_cases(test_dir, handler, validators, selected_cases)
@@ -258,9 +276,13 @@ def run(
     profile: str = "standard",
     preset_name: str = "minimal",
     seed: int | None = None,
+    fork: str = "gloas",
 ) -> int:
-    spec = import_module(f"eth_consensus_specs.gloas.{preset_name}")
-    handlers = HANDLERS if handler == "all" else (handler,)
+    available = handlers_for(fork)
+    if handler != "all" and handler not in available:
+        raise ValueError(f"unsupported generation handler: {fork}/{handler}")
+    spec = import_module(f"eth_consensus_specs.{fork}.{preset_name}")
+    handlers = available if handler == "all" else (handler,)
     seed = seed if seed is not None else 0
     for current_handler in handlers:
         materialize_handler(current_handler, profile, comptests_output, spec, preset_name, seed)

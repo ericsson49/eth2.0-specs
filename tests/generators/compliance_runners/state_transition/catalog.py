@@ -15,6 +15,7 @@ class Provider:
     handler: str
     require_post: bool = False
     materializer_module: str | None = None
+    forks: tuple[str, ...] = ("gloas",)
 
 
 RUNNERS: dict[str, tuple[str, ...]] = {
@@ -59,7 +60,7 @@ RUNNERS: dict[str, tuple[str, ...]] = {
 }
 # Temporarily excluded until its fork-epoch setup is resolved.
 DISABLED_HANDLERS = {"blocks", "payload_attestation"}
-HANDLERS = tuple(
+ALL_HANDLERS = tuple(
     handler
     for handlers in RUNNERS.values()
     for handler in handlers
@@ -249,3 +250,20 @@ PROVIDERS = (
         require_post=True,
     ),
 )
+
+
+FORKS = tuple(dict.fromkeys(fork for provider in PROVIDERS for fork in provider.forks))
+
+
+def handlers_for(fork: str) -> tuple[str, ...]:
+    if fork not in FORKS:
+        raise ValueError(f"unsupported generation fork: {fork}")
+    return tuple(
+        dict.fromkeys(
+            p.handler for p in PROVIDERS if fork in p.forks and p.handler not in DISABLED_HANDLERS
+        )
+    )
+
+
+# Legacy consumers (including Gloas-only evaluation) retain the default fork scope.
+HANDLERS = handlers_for("gloas")

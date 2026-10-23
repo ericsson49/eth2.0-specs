@@ -5,8 +5,9 @@ for individual state-transition handlers. Each handler models semantic coverage
 conditions, materializes concrete SSZ test vectors, and validates the generated
 vectors against the executable specification.
 
-The generator currently targets the `gloas` fork. It supports both the `minimal`
-and `mainnet` presets. Its test cases follow the standard
+The generator defaults to the `gloas` fork. Provider availability is selected by
+fork; the available forks are determined by registered providers. It supports
+both the `minimal` and `mainnet` presets. Its test cases follow the standard
 [operations test format](../../../formats/operations/README.md), the
 [sanity blocks test format](../../../formats/sanity/blocks.md), or the
 [epoch processing test format](../../../formats/epoch_processing/README.md),
@@ -68,6 +69,7 @@ handler, profile, or output directory with Make variables:
 
 ```bash
 make comptests kind=state_transition handler=withdrawals profile=smoke
+make comptests kind=state_transition fork=gloas handler=withdrawals profile=smoke
 make comptests kind=state_transition preset=mainnet
 make comptests kind=state_transition handler=withdrawals seed=12345
 make comptests kind=state_transition profile=max
@@ -158,3 +160,9 @@ Generation and scoring inherit that default; explicit backend arguments override
 it. Use `load_provider(name, spec=spec)` for direct recovery or validation with
 a particular preset; generation accepts `spec` explicitly, and validation
 through the runner reads the preset from each case's path.
+
+Use `--fork <fork>` with the direct module entry point. The default is `gloas`.
+`--handler all` selects only supported providers for the chosen fork;
+unsupported fork/handler combinations fail before generation. Validation and
+replay decode each vector with the fork and preset recorded in its directory
+path.
