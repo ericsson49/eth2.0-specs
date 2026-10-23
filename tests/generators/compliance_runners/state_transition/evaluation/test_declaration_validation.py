@@ -82,12 +82,12 @@ def test_unknown_assertions_remain_unknown():
 
 
 def test_factory_and_provider_follow_case_spec(tmp_path, monkeypatch):
-    case = tmp_path / "operations" / "fake" / "main" / "case_0000"
+    case = tmp_path / "operations" / "fake" / "pyspec_tests" / "case_0000"
     case.mkdir(parents=True)
-    (case / "dimensions.yaml").write_text("claimed: {limit: 2, check: true}\n")
+    (case / "dimensions.yaml").write_text("test_provider: fake\nclaimed: {limit: 2, check: true}\n")
     (case / "post.ssz_snappy").touch()
     default = SimpleNamespace(limit=1, BeaconState=object(), Operation=object())
-    alternate = SimpleNamespace(limit=2, BeaconState=object(), Operation=object())
+    alternate = SimpleNamespace(limit=2, BeaconState=object(), Operation=object(), fork="gloas")
     monkeypatch.setattr(
         declaration_validation,
         "decode",
@@ -99,17 +99,27 @@ def test_factory_and_provider_follow_case_spec(tmp_path, monkeypatch):
         target(), operation_name="op", operation_type="Operation", spec=lambda: default
     )
     assert any(c.status == "mismatch" for c in validator(case))
-    monkeypatch.setitem(provider.RUNNER_BY_HANDLER, "fake", "operations")
+    monkeypatch.setitem(provider.RUNNERS_BY_HANDLER, "fake", ("operations",))
+    monkeypatch.setattr(
+        provider,
+        "providers_for",
+        lambda *args: (SimpleNamespace(name="fake", runner="operations"),),
+    )
     monkeypatch.setattr(provider, "_spec_for_case", lambda path: alternate)
     assert provider.validate_cases(tmp_path, "fake", validator) == 0
 
 
 def test_provider_rejects_missing_required_post_state(tmp_path, monkeypatch):
-    case = tmp_path / "operations" / "fake" / "main" / "case_0000"
+    case = tmp_path / "operations" / "fake" / "pyspec_tests" / "case_0000"
     case.mkdir(parents=True)
-    (case / "dimensions.yaml").write_text("claimed: {}\n")
-    case_spec = SimpleNamespace(limit=1, BeaconState=object())
-    monkeypatch.setitem(provider.RUNNER_BY_HANDLER, "fake", "operations")
+    (case / "dimensions.yaml").write_text("test_provider: fake\nclaimed: {}\n")
+    case_spec = SimpleNamespace(limit=1, BeaconState=object(), fork="gloas")
+    monkeypatch.setitem(provider.RUNNERS_BY_HANDLER, "fake", ("operations",))
+    monkeypatch.setattr(
+        provider,
+        "providers_for",
+        lambda *args: (SimpleNamespace(name="fake", runner="operations"),),
+    )
     monkeypatch.setattr(provider, "_spec_for_case", lambda path: case_spec)
     monkeypatch.setattr(
         declaration_validation,

@@ -6,12 +6,21 @@ conditions, materializes concrete SSZ test vectors, and validates the generated
 vectors against the executable specification.
 
 The generator defaults to the `gloas` fork. The `eip8453` fork currently
-supports `height_events`; provider availability is selected by fork. It supports
-both the `minimal` and `mainnet` presets. Its test cases follow the standard
+supports `height_events`, `inactivity_updates`, and
+`participation_flag_updates`; provider availability and the handler's runner are
+selected by fork. It supports both the `minimal` and `mainnet` presets. Its test
+cases follow the standard
 [operations test format](../../../formats/operations/README.md), the
-[sanity blocks test format](../../../formats/sanity/blocks.md), or the
-[epoch processing test format](../../../formats/epoch_processing/README.md),
+[sanity blocks test format](../../../formats/sanity/blocks.md), the
+[epoch processing test format](../../../formats/epoch_processing/README.md), or
+the [round processing test format](../../../formats/round_processing/README.md),
 depending on the handler.
+
+On EIP-8453, `inactivity_updates` and `participation_flag_updates` generate
+`round_processing` vectors. On Gloas, the same handler names generate
+`epoch_processing` vectors. Their provider names and coverage targets are
+distinct, and validation uses both the fork and runner encoded in each case's
+directory. A root may contain vectors from both forks.
 
 ## Handlers
 
@@ -70,6 +79,8 @@ handler, profile, or output directory with Make variables:
 ```bash
 make comptests kind=state_transition handler=withdrawals profile=smoke
 make comptests kind=state_transition fork=eip8453 handler=height_events profile=smoke
+make comptests kind=state_transition fork=eip8453 handler=inactivity_updates profile=smoke
+make comptests kind=state_transition fork=eip8453 handler=participation_flag_updates profile=smoke
 make comptests kind=state_transition preset=mainnet
 make comptests kind=state_transition handler=withdrawals seed=12345
 make comptests kind=state_transition profile=max
@@ -136,6 +147,9 @@ Generated cases use this layout:
   operations/<handler>/pyspec_tests/case_XXXX/
   sanity/blocks/pyspec_tests/case_XXXX/
   epoch_processing/<handler>/pyspec_tests/case_XXXX/
+<output>/minimal/eip8453/
+  operations/height_events/pyspec_tests/case_XXXX/
+  round_processing/<handler>/pyspec_tests/case_XXXX/
 ```
 
 Each case contains `pre.ssz_snappy`, the operation input when applicable,

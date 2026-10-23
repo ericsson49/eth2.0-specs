@@ -45,6 +45,40 @@ def test_unknown_provider_fails_explicitly():
         load_provider("missing")
 
 
+@pytest.mark.parametrize("selected_handler", ["blocks", "payload_attestation"])
+def test_disabled_generation_handlers_still_validate(monkeypatch, tmp_path, selected_handler):
+    registered = runner.providers_for(selected_handler)
+    provider = registered[0]
+    case = (
+        tmp_path
+        / "minimal"
+        / "gloas"
+        / provider.runner
+        / selected_handler
+        / "pyspec_tests"
+        / "case_0000"
+    )
+    case.mkdir(parents=True)
+    (case / "dimensions.yaml").write_text(f"test_provider: {provider.name}\nclaimed: {{}}\n")
+    validated = []
+
+    def validate(case_spec, case_dir):
+        assert case_spec.fork == "gloas"
+        validated.append(case_dir)
+        return []
+
+    validator = SimpleNamespace(for_spec=validate)
+    monkeypatch.setattr(
+        runner, "load_provider", lambda name: SimpleNamespace(validate_case=validator)
+    )
+    assert runner.validate_cases(tmp_path, selected_handler, validator) == 0
+    assert runner.validate_handler(tmp_path, selected_handler) == 0
+    assert validated == [case, case]
+    assert runner.discover_handlers(tmp_path) == [selected_handler]
+    with pytest.raises(ValueError, match="unsupported generation handler"):
+        runner.run(selected_handler, tmp_path, "smoke")
+
+
 def test_materialization_runner_consumes_case_lists(monkeypatch, tmp_path):
     selected_spec = SimpleNamespace(fork="gloas")
     cases = [{"value": 1}, {"value": 2}]

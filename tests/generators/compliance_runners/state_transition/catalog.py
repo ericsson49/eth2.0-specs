@@ -57,17 +57,36 @@ RUNNERS: dict[str, tuple[str, ...]] = {
         "rewards_and_penalties",
         "proposer_lookahead",
     ),
+    "round_processing": ("inactivity_updates", "participation_flag_updates"),
     "sanity": ("blocks", "slots"),
 }
 # Temporarily excluded until its fork-epoch setup is resolved.
 DISABLED_HANDLERS = {"blocks", "payload_attestation"}
 ALL_HANDLERS = tuple(
-    handler
-    for handlers in RUNNERS.values()
-    for handler in handlers
-    if handler not in DISABLED_HANDLERS
+    dict.fromkeys(
+        handler
+        for handlers in RUNNERS.values()
+        for handler in handlers
+        if handler not in DISABLED_HANDLERS
+    )
 )
 PROVIDERS = (
+    Provider(
+        "eip8453_inactivity_updates",
+        "eip8453.inactivity_updates",
+        "round_processing",
+        "inactivity_updates",
+        require_post=True,
+        forks=("eip8453",),
+    ),
+    Provider(
+        "eip8453_participation_flag_updates",
+        "eip8453.participation_flag_updates",
+        "round_processing",
+        "participation_flag_updates",
+        require_post=True,
+        forks=("eip8453",),
+    ),
     Provider(
         "eip8453_height_events",
         "eip8453.height_events",

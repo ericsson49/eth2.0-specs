@@ -18,7 +18,7 @@ from tests.generators.compliance_runners.state_transition.provider import (
 
 @pytest.mark.parametrize("preset", ["minimal", "mainnet"])
 def test_registered_generation_discovery_validation_and_replay(tmp_path, preset):
-    assert run("all", tmp_path, "smoke", preset, fork="eip8453") == 0
+    assert run("height_events", tmp_path, "smoke", preset, fork="eip8453") == 0
     cases = list(gather_tests(tmp_path, kind="state_transition"))
     provider = load_provider("eip8453_height_events", spec=spec_targets[preset]["eip8453"])
     expected = provider.build_profile("smoke", spec=spec_targets[preset]["eip8453"])
@@ -58,7 +58,11 @@ def test_gloas_default_still_generates_and_replays(tmp_path):
 
 def test_fork_support_is_explicit(tmp_path):
     assert "eip8453" not in ALL_PHASES
-    assert handlers_for("eip8453") == ("height_events",)
+    assert set(handlers_for("eip8453")) == {
+        "height_events",
+        "inactivity_updates",
+        "participation_flag_updates",
+    }
     assert "height_events" not in handlers_for("gloas")
     for fork, handler in (("gloas", "height_events"), ("eip8453", "attestation")):
         with pytest.raises(ValueError, match="unsupported generation handler"):

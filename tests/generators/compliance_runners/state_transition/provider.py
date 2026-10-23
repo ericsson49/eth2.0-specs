@@ -13,7 +13,7 @@ from ruamel.yaml import YAML
 from eth_consensus_specs.test.helpers.specs import spec_targets
 from tests.generators.compliance_runners.runner.formats import OPERATION_INPUTS
 
-from .catalog import ALL_HANDLERS, handlers_for, Provider, PROVIDERS, RUNNERS
+from .catalog import handlers_for, Provider, PROVIDERS, RUNNERS
 from .materializer import SUITE_NAME
 
 if TYPE_CHECKING:
@@ -95,8 +95,9 @@ def decode(path: Path, sedes: Any) -> Any:
     return sedes.decode_bytes(snappy.decompress(path.read_bytes()))
 
 
-RUNNER_BY_HANDLER = {
-    handler: runner for runner, handlers in RUNNERS.items() for handler in handlers
+RUNNERS_BY_HANDLER = {
+    handler: tuple(runner for runner, handlers in RUNNERS.items() if handler in handlers)
+    for handler in dict.fromkeys(handler for handlers in RUNNERS.values() for handler in handlers)
 }
 
 
@@ -115,8 +116,11 @@ def validate_cases(
     selected_cases: set[str] | None = None,
 ) -> int:
     """Run a handler validator over its materialized reference-test cases."""
-    phase = RUNNER_BY_HANDLER[handler]
-    case_dirs = sorted(test_dir.glob(f"**/{phase}/{handler}/{SUITE_NAME}/case_*"))
+    case_dirs = sorted(
+        case_dir
+        for phase in RUNNERS_BY_HANDLER[handler]
+        for case_dir in test_dir.glob(f"**/{phase}/{handler}/{SUITE_NAME}/case_*")
+    )
     if selected_cases is not None:
         case_dirs = [case_dir for case_dir in case_dirs if case_dir.name in selected_cases]
     if not case_dirs:
@@ -127,12 +131,13 @@ def validate_cases(
     total_mm = total_err = 0
     for case_dir in case_dirs:
         case_spec = _spec_for_case(case_dir)
-        supported = {p.name for p in providers_for(handler, case_spec.fork)}
+        phase = case_dir.parent.parent.parent.name
+        supported = {p.name for p in providers_for(handler, case_spec.fork) if p.runner == phase}
         dimensions = _YAML.load((case_dir / "dimensions.yaml").read_text())
         test_provider = dimensions.get("test_provider")
         if test_provider not in supported:
             raise ValueError(
-                f"provider {test_provider!r} does not support {case_spec.fork}/{handler}"
+                f"provider {test_provider!r} does not support {case_spec.fork}/{phase}/{handler}"
             )
         if isinstance(validate_case, dict):
             if test_provider not in validate_case:
@@ -166,13 +171,13 @@ def validate_cases(
 
 def discover_handlers(test_dir: Path) -> list[str]:
     candidates = []
-    for phase in ("operations", "epoch_processing", "sanity"):
-        for handler in ALL_HANDLERS:
+    for phase, handlers in RUNNERS.items():
+        for handler in handlers:
             if list(test_dir.glob(f"**/{phase}/{handler}/**/case_*")):
                 candidates.append((phase, handler))
     if not candidates:
         raise ValueError(f"could not discover a state-transition handler under {test_dir}")
-    return [handler for _, handler in candidates]
+    return list(dict.fromkeys(handler for _, handler in candidates))
 
 
 def providers_for(handler: str, fork: str = "gloas") -> tuple[Provider, ...]:

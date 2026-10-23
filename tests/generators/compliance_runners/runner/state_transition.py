@@ -161,6 +161,8 @@ def run_test(test_info: VectorCase):
 def run_epoch_processing_case(spec, state, handler, expected_post):
     if handler not in EPOCH_PROCESSORS:
         raise ValueError(f"Unsupported epoch_processing handler: {handler}")
+    if hasattr(spec, "process_round") and handler in ROUND_PROCESSORS:
+        raise ValueError(f"{handler} belongs to round_processing on fork: {spec.fork}")
     process_fn = getattr(spec, EPOCH_PROCESSORS[handler])
     run_processing_case(process_fn, state, None, expected_post)
 
