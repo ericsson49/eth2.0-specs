@@ -14,9 +14,7 @@ def observe_attributes(ctx):
         case = "SHORT_SUPPORT"
     elif len(bits) > len(votes):
         case = "LONG_SUPPORT"
-    elif any(
-        bit and vote.data.slot != slot - 1 for bit, vote in zip(bits, votes, strict=False)
-    ):
+    elif any(bit and vote.data.slot != slot - 1 for bit, vote in zip(bits, votes, strict=False)):
         case = "OLD_SUPPORTED"
     elif votes and body.attestations and body.legacy_attester_slashings:
         case = "MIXED"
