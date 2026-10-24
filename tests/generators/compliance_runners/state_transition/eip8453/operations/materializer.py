@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from eth_consensus_specs.test.helpers.state import state_transition_and_sign_block
 from tests.generators.compliance_runners.state_transition.eip8453.attestation.materializer import (
     AttestationMaterializer,
 )
@@ -149,12 +150,11 @@ class OperationsMaterializer(OperationMaterializer):
         with real_bls():
             pre, block = self.build_block_inputs(solution)
             post = pre.copy()
-            try:
-                self.spec.state_transition(post, block, validate_result=False)
-            except AssertionError:
+            block = state_transition_and_sign_block(
+                self.spec, post, block.message, expect_fail=not claimed["accepted"]
+            )
+            if not claimed["accepted"]:
                 post = None
-        if (post is not None) != claimed["accepted"]:
-            raise ValueError(f"Unexpected block outcome: {claimed}")
         parts = [("pre", "ssz", pre.encode_bytes()), ("blocks_0", "ssz", block.encode_bytes())]
         if post is not None:
             parts.append(("post", "ssz", post.encode_bytes()))

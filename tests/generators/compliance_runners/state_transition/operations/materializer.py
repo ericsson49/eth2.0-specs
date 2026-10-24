@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from typing import Any, TYPE_CHECKING
 
-from eth_consensus_specs.test.helpers.block import build_empty_block
+from eth_consensus_specs.test.helpers.block import (
+    build_empty_block,
+    sign_block,
+    transition_unsigned_block,
+)
 from eth_consensus_specs.test.helpers.genesis import create_genesis_state
 from tests.generators.compliance_runners.state_transition.materializer import Materializer
+from tests.generators.compliance_runners.state_transition.validation_helpers import bls_enabled
 
 from .target import LIMITS, TARGET
 
@@ -63,8 +68,9 @@ class OperationsMaterializer(Materializer):
 
     def materialize_solution(self, solution: Any) -> tuple[dict, list[TestCasePart]]:
         spec = self.spec
-        pre = self._base_state()
-        block = build_empty_block(spec, pre, slot=1)
+        with bls_enabled():
+            pre = self._base_state()
+            block = build_empty_block(spec, pre, slot=1)
         body = block.body
         gates = {f.name: getattr(solution, f.name) for f in LIMITS.factors}
         body.graffiti = spec.Bytes32(self.rng.getrandbits(256).to_bytes(32, "big"))
@@ -90,12 +96,17 @@ class OperationsMaterializer(Materializer):
                     self._randomize_operation(operation)
                     values.append(operation)
 
-        signed_block = spec.SignedBeaconBlock(message=block)
         post = pre.copy()
-        try:
-            spec.state_transition(post, signed_block, validate_result=False)
-        except (AssertionError, IndexError):
-            post = None
+        with bls_enabled():
+            accepted = True
+            try:
+                transition_unsigned_block(spec, post, block)
+            except (AssertionError, IndexError):
+                accepted = False
+            block.state_root = post.hash_tree_root()
+            signed_block = sign_block(spec, post, block)
+            if not accepted:
+                post = None
 
         outcome = "ACCEPT_EMPTY"
         if not gates["deposits_empty"]:

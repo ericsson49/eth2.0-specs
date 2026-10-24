@@ -8,7 +8,12 @@ from eth_consensus_specs.test.helpers.attestations import get_valid_attestation,
 from eth_consensus_specs.test.helpers.attester_slashings import (
     get_valid_attester_slashing_by_indices,
 )
-from eth_consensus_specs.test.helpers.block import apply_empty_block, build_empty_block
+from eth_consensus_specs.test.helpers.block import (
+    apply_empty_block,
+    build_empty_block,
+    sign_block,
+    transition_unsigned_block,
+)
 from eth_consensus_specs.test.helpers.bls_to_execution_changes import get_signed_address_change
 from eth_consensus_specs.test.helpers.genesis import create_genesis_state
 from eth_consensus_specs.test.helpers.payload_attestation import prepare_signed_payload_attestation
@@ -142,11 +147,15 @@ class OperationsDispatchMaterializer(Materializer):
             )
             block = build_empty_block(spec, pre, slot=int(pre.slot) + 1)
             self._populate(scenario, pre, block)
-            signed_block = spec.SignedBeaconBlock(message=block)
             post = pre.copy()
+            accepted = True
             try:
-                spec.state_transition(post, signed_block, validate_result=False)
+                transition_unsigned_block(spec, post, block)
             except (AssertionError, IndexError):
+                accepted = False
+            block.state_root = post.hash_tree_root()
+            signed_block = sign_block(spec, post, block)
+            if not accepted:
                 post = None
         finally:
             bls.bls_active = old_bls_active

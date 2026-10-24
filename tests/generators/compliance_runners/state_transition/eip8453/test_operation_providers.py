@@ -8,7 +8,7 @@ import pytest
 from eth_consensus_specs.eip8453 import mainnet, minimal
 from tests.generators.compliance_runners.runner.discovery import gather_tests
 from tests.generators.compliance_runners.runner.io import read_yaml
-from tests.generators.compliance_runners.runner.state_transition import run_test
+from tests.generators.compliance_runners.runner.state_transition import get_test_case, run_test
 from tests.generators.compliance_runners.state_transition.evaluation.cli import run_case
 from tests.generators.compliance_runners.state_transition.evaluation.coverage_dsl import score
 from tests.generators.compliance_runners.state_transition.provider import (
@@ -159,6 +159,14 @@ def test_generation_validation_replay(tmp_path, preset, selected_handler):
                 read_yaml(case.test_dir / "dimensions.yaml")["test_provider"]
                 == "eip8453_operations"
             )
+            spec = minimal if preset == "minimal" else mainnet
+            vector = get_test_case(spec, case.test_dir, handler)
+            advanced = vector["pre"].copy()
+            block = vector["blocks"][0]
+            spec.process_slots(advanced, block.message.slot)
+            # Rejected vectors must pass signature validation to reach the operation guards.
+            with real_bls():
+                assert spec.verify_block_signature(advanced, block)
         run_test(case)
     spec = minimal if preset == "minimal" else mainnet
     run_case(cases[0], getattr(spec, "process_" + selected_handler))
